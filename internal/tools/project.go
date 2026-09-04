@@ -50,7 +50,7 @@ type projectGetResult struct {
 func RegisterSearchProjects(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "search_projects",
-		Description: "Search for LFX projects using the LFX query service. name is a typeahead match; slug is an exact project slug (e.g. c2pa-fund); name_exact matches the stored project name exactly (case-sensitive); parent_uid lists the children of a foundation or umbrella project; legal_parent_uid lists the projects under one legal entity. include_total adds total and total_complete (the count over the caller's visibility; false means a lower bound) so you do not have to page to count. The Linux Foundation's own entry (slug tlf) is one project bucket, not the LF-wide scope. LF-wide questions take no project on the query tools, query_lfx_lens included (omit project_slugs); pass project_slugs only to restrict to named projects.",
+		Description: "Search for LFX projects using the LFX query service. name is a typeahead match; slug is an exact project slug (e.g. c2pa-fund); name_exact matches the stored project name exactly (case-sensitive); parent_uid lists the children of a foundation or umbrella project; legal_parent_uid lists the projects under one legal entity. include_total adds total and total_complete (the count over the caller's visibility; false means a lower bound). The Linux Foundation's own entry (slug tlf) is one project bucket, not the LF-wide scope. LF-wide questions take no project on the query tools, query_lfx_lens included (omit project_slugs); pass project_slugs only to restrict to named projects.",
 		Annotations: &mcp.ToolAnnotations{
 			Title:        "Search Projects",
 			ReadOnlyHint: true,
