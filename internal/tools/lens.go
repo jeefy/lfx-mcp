@@ -44,7 +44,7 @@ Use this tool ONLY as a FALLBACK: switch here only when the semantic layer genui
 
 Everything else - contributors, activities, memberships, events and sponsorships, registrations, education, maintainer rosters/counts/names, health, social listening (mentions, sentiment, reach) - is a standard metric first (query_lfx_standard_metrics; inventory in read_lfx_standard_metrics_guidance), then explore_lfx_semantic_layer + query_lfx_semantic_layer when no family fits. Committee/board rosters: the committee tools.
 
-project_slug is required default context, NOT a scope boundary. Find it via search_projects. For multiple foundations, pass one slug and name the others in input. project_slug is a required CONTEXT field of this tool only, not a scope: for an LF-wide question pass 'tlf' here and say LF-wide in input. On every other tool the LF-wide scope is NO project at all, and 'tlf' is the Linux Foundation's own bucket, not the LF-wide scope.
+project_slugs is optional. Omit it for LF-wide questions: no project or foundation filter is applied. Pass exact slugs from search_projects to scope to them; several slugs are combined, so a JDF series plus its -fund parent, or a multi-foundation comparison, is one call. Unknown slugs are rejected. Every answer opens with the scope it ran with.
 
 Runs synchronously; wait 15-30 seconds without retrying. Returns <=200 rows; request explicit pagination ("page 2", or stable ORDER BY with LIMIT/OFFSET). Windows: default trailing 12 months; state concrete yyyy-mm-dd dates or the SQL picks its own.`,
 		Annotations: &mcp.ToolAnnotations{
@@ -55,18 +55,33 @@ Runs synchronously; wait 15-30 seconds without retrying. Returns <=200 rows; req
 }
 
 // QueryLFXLensArgs defines the input for query_lfx_lens.
+//
+// project_slugs is an optional list, not a required default: a required
+// "context" slug documented as "not a scope boundary" was read by the lens
+// agent as its compulsory scope, so LF-wide questions silently became one
+// bucket's figures (the 'tlf' catch-all is about a quarter of memberships, not
+// the LF root). With no slugs the lens applies no project or foundation filter
+// at all; with slugs it scopes to exactly those, OR'd; unknown slugs are
+// rejected by name resolution before any query runs. The old project_slug
+// field is gone rather than mapped: a stale client sending it gets a visible
+// schema error instead of a silently rescoped answer.
 type QueryLFXLensArgs struct {
-	ProjectSlug string `json:"project_slug" jsonschema:"Required default context slug from search_projects, not a scope boundary. For multiple foundations, pass one here and name the others in input. A context field of this tool only: for an LF-wide question pass 'tlf' here and say LF-wide in input; on every other tool 'tlf' is the Linux Foundation's own bucket, not the LF-wide scope."`
-	Input       string `json:"input" jsonschema:"Natural language question. Use for cross-domain joins and shapes no standard metric expresses; membership counts on any date or by year are the memberships standard metric, and the standard metrics already rank people (top contributors, top maintainers). Contributor, activity, membership, event, education, health and social listening questions belong to the semantic layer and its standard metrics - read read_lfx_semantic_layer_guidance before falling back here. Takes 15-30s. (required)"`
+	ProjectSlugs []string `json:"project_slugs,omitempty" jsonschema:"Optional. Exact project slugs from search_projects. Omit for LF-wide questions: no project or foundation filter is applied. Several slugs are combined (OR): a JDF series plus its -fund parent, or several foundations to compare, is one call. Unknown slugs are rejected before any query runs."`
+	Input        string   `json:"input" jsonschema:"Natural language question. Use for cross-domain joins and shapes no standard metric expresses; membership counts on any date or by year are the memberships standard metric, and the standard metrics already rank people (top contributors, top maintainers). Contributor, activity, membership, event, education, health and social listening questions belong to the semantic layer and its standard metrics - read read_lfx_semantic_layer_guidance before falling back here. Takes 15-30s. (required)"`
 }
 
+// lensWorkflowAdditional is the additional_data the lens MCP workflow reads.
+// project_slugs is always present — [] for LF-wide — so the lens never has to
+// guess whether an absent key means "no scope" or "old client".
 type lensWorkflowAdditional struct {
-	Foundation lensFoundation `json:"foundation"`
+	ProjectSlugs []string `json:"project_slugs"`
 }
 
-type lensFoundation struct {
-	Slug string `json:"slug"`
-}
+// lensUnknownSlugPrefix opens the lens's rejection when a slug has no
+// PROJECT_SPINE row. The lens completes the run (status COMPLETED) with that
+// text as its whole content, so the prefix is how this side tells a rejection
+// from an answer. Pinned by tests on both sides.
+const lensUnknownSlugPrefix = "Unknown project slug"
 
 type lensQueryResponse struct {
 	Content    string `json:"content,omitempty"`
@@ -83,8 +98,8 @@ func handleQueryLFXLens(ctx context.Context, req *mcp.CallToolRequest, args Quer
 		return nil, nil, fmt.Errorf("LFX Lens tools not configured")
 	}
 
-	if args.ProjectSlug == "" || args.Input == "" {
-		return nil, nil, fmt.Errorf("project_slug and input are required")
+	if strings.TrimSpace(args.Input) == "" {
+		return nil, nil, fmt.Errorf("input is required")
 	}
 
 	userID := AnonymousUserID
@@ -95,7 +110,7 @@ func handleQueryLFXLens(ctx context.Context, req *mcp.CallToolRequest, args Quer
 	sessionID := userID + "-" + time.Now().UTC().Format("2006-01-02T15:04:05Z")
 
 	additionalData, err := json.Marshal(lensWorkflowAdditional{
-		Foundation: lensFoundation{Slug: args.ProjectSlug},
+		ProjectSlugs: normalizeSlugs(args.ProjectSlugs),
 	})
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to marshal additional_data: %w", err)
@@ -129,9 +144,40 @@ func handleQueryLFXLens(ctx context.Context, req *mcp.CallToolRequest, args Quer
 		}, nil, nil
 	}
 
+	// An unknown slug is not an answer: the lens stopped before the agent ran
+	// and no query executed. Surface it as an error, text unchanged, so the
+	// caller re-resolves the slug instead of reading the message as data.
+	if strings.HasPrefix(strings.TrimSpace(resp.Content), lensUnknownSlugPrefix) {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: resp.Content}},
+			IsError: true,
+		}, nil, nil
+	}
+
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{&mcp.TextContent{Text: resp.Content}},
 	}, nil, nil
+}
+
+// normalizeSlugs trims, drops empties and de-duplicates preserving order. No
+// case folding and no fuzzy matching: stored slugs are exact and
+// search_projects is the resolver. Always returns a non-nil slice so the JSON
+// carries [] rather than null.
+func normalizeSlugs(slugs []string) []string {
+	out := make([]string, 0, len(slugs))
+	seen := make(map[string]struct{}, len(slugs))
+	for _, s := range slugs {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			continue
+		}
+		if _, dup := seen[s]; dup {
+			continue
+		}
+		seen[s] = struct{}{}
+		out = append(out, s)
+	}
+	return out
 }
 
 // ---------------------------------------------------------------------------
