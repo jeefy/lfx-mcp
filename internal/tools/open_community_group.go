@@ -48,7 +48,7 @@ Use this for questions about upcoming meetups, chapters and local community even
 
 Filter by community (a foundation's community name as listed by list_ocg_meetup_filters - call it first rather than guessing), free-text q on the event name, location, and a since/until date window on the start time. Results are ordered by start time and paginate with limit/offset; total is the full count.`
 
-const listOCGMeetupFiltersDescription = `List the filter values available for search_ocg_meetups: the community names that host meetups, and the roles a person can hold at one (attendee, organizer, speaker...). Call this before filtering by community so the exact stored spelling is used.`
+const listOCGMeetupFiltersDescription = `List the community names that host meetups, in the exact stored spelling search_ocg_meetups accepts for its community filter - call this before filtering by community rather than guessing. The response also lists the roles a person can hold at a meetup (attendee, organizer, speaker...); those are informational and are NOT a search_ocg_meetups filter.`
 
 // RegisterSearchOCGMeetups registers the search_ocg_meetups tool.
 func RegisterSearchOCGMeetups(server *mcp.Server) {
@@ -83,8 +83,8 @@ type SearchOCGMeetupsArgs struct {
 	Location  string `json:"location,omitempty" jsonschema:"Optional free-text match on the event location (city, country, or Virtual)."`
 	Since     string `json:"since,omitempty" jsonschema:"Optional window start on the meetup start time, yyyy-mm-dd inclusive. Omitted = from now."`
 	Until     string `json:"until,omitempty" jsonschema:"Optional window end on the meetup start time, yyyy-mm-dd inclusive. Omitted = no upper bound."`
-	Limit     int    `json:"limit,omitempty" jsonschema:"Maximum rows to return (default 10, max 100)."`
-	Offset    int    `json:"offset,omitempty" jsonschema:"Number of rows to skip for pagination (default 0). The response's total says how many rows match in all."`
+	Limit     *int   `json:"limit,omitempty" jsonschema:"Maximum rows to return (default 10, max 100)."`
+	Offset    *int   `json:"offset,omitempty" jsonschema:"Number of rows to skip for pagination (default 0). The response's total says how many rows match in all."`
 }
 
 // ListOCGMeetupFiltersArgs defines the (empty) input for list_ocg_meetup_filters.
@@ -92,8 +92,9 @@ type ListOCGMeetupFiltersArgs struct{}
 
 // ocgMeetupsQuery maps the tool arguments onto the endpoint's query string.
 // Unset arguments are absent rather than sent as empty values the lens would
-// have to interpret; limit and offset are sent only when the caller set them,
-// so the lens applies its own defaults.
+// have to interpret. limit and offset are pointers so an explicit 0 or a
+// negative value is distinguishable from an omitted one and reaches the lens
+// for its own validation message, rather than being dropped here.
 func ocgMeetupsQuery(args SearchOCGMeetupsArgs) url.Values {
 	params := url.Values{}
 	for key, value := range map[string]string{
@@ -107,11 +108,11 @@ func ocgMeetupsQuery(args SearchOCGMeetupsArgs) url.Values {
 			params.Set(key, value)
 		}
 	}
-	if args.Limit > 0 {
-		params.Set("limit", strconv.Itoa(args.Limit))
+	if args.Limit != nil {
+		params.Set("limit", strconv.Itoa(*args.Limit))
 	}
-	if args.Offset > 0 {
-		params.Set("offset", strconv.Itoa(args.Offset))
+	if args.Offset != nil {
+		params.Set("offset", strconv.Itoa(*args.Offset))
 	}
 	return params
 }

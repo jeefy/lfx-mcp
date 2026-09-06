@@ -278,10 +278,13 @@ npx @modelcontextprotocol/inspector
 
 ### Open Community Groups
 
-| Tool                      | Description                                                                             |
-|---------------------------|-----------------------------------------------------------------------------------------|
-| `search_ocg_meetups`      | Search upcoming Open Community Group meetups; filter by community, name, location, date |
-| `list_ocg_meetup_filters` | List the community names and roles available for filtering meetups                      |
+*Staff-only, and not enabled by default: these tools are backed by LFX Lens
+endpoints and are turned on by name via `LFXMCP_TOOLS` once those are live.*
+
+| Tool                      | Description                                                                               |
+|---------------------------|-------------------------------------------------------------------------------------------|
+| `search_ocg_meetups`      | Search upcoming Open Community Group meetups; filter by community, name, location, date   |
+| `list_ocg_meetup_filters` | List the community names accepted by the meetup search (plus meetup roles, for reference) |
 
 ### Discord
 

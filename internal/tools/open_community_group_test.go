@@ -47,6 +47,17 @@ func TestSearchOCGMeetupsDescription_RoutesCorrectly(t *testing.T) {
 	}
 }
 
+// Roles come back from the filters endpoint but search_ocg_meetups has no
+// role parameter; the description must say so or agents will try one.
+func TestListOCGMeetupFiltersDescription_RolesAreNotAFilter(t *testing.T) {
+	tool := listRegisteredTool(t, "list_ocg_meetup_filters", RegisterListOCGMeetupFilters)
+	for _, want := range []string{"community filter", "NOT a search_ocg_meetups filter"} {
+		if !strings.Contains(tool.Description, want) {
+			t.Errorf("list_ocg_meetup_filters description missing %q", want)
+		}
+	}
+}
+
 func TestSearchOCGMeetups_SendsArgumentsAsQueryParams(t *testing.T) {
 	captured := setupLensTest(t)
 
@@ -56,8 +67,8 @@ func TestSearchOCGMeetups_SendsArgumentsAsQueryParams(t *testing.T) {
 		Location:  "Austin",
 		Since:     "2026-09-01",
 		Until:     "2026-12-31",
-		Limit:     25,
-		Offset:    50,
+		Limit:     ocgInt(25),
+		Offset:    ocgInt(50),
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -77,6 +88,26 @@ func TestSearchOCGMeetups_SendsArgumentsAsQueryParams(t *testing.T) {
 		"limit":     {"25"},
 		"offset":    {"50"},
 	}
+	if !reflect.DeepEqual(captured.Query, want) {
+		t.Errorf("query = %v, want %v", captured.Query, want)
+	}
+}
+
+func ocgInt(value int) *int { return &value }
+
+// Zero and negative values are the caller's to send and the lens's to
+// reject: forwarding them is what turns a bad value into the lens's own
+// detail message instead of a silent default.
+func TestSearchOCGMeetups_ForwardsZeroAndNegativeLimitOffset(t *testing.T) {
+	captured := setupLensTest(t)
+
+	if _, _, err := handleSearchOCGMeetups(context.Background(), &mcp.CallToolRequest{}, SearchOCGMeetupsArgs{
+		Limit:  ocgInt(0),
+		Offset: ocgInt(-5),
+	}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := url.Values{"limit": {"0"}, "offset": {"-5"}}
 	if !reflect.DeepEqual(captured.Query, want) {
 		t.Errorf("query = %v, want %v", captured.Query, want)
 	}
