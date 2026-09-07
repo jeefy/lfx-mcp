@@ -577,3 +577,39 @@ func setupFakeLens(t *testing.T, handler http.HandlerFunc) {
 	SetLensConfig(&LensConfig{ServiceClient: client})
 	t.Cleanup(func() { lensConfig = prev })
 }
+
+// TestStandardMetricResultRendersCompactRows pins R53's rendering: a breakdown
+// returns every row (no cap, by design), so the rows are encoded compact, one
+// per line, while the scalar members and applied stay pretty. The text must
+// remain valid JSON with every value unchanged.
+func TestStandardMetricResultRendersCompactRows(t *testing.T) {
+	body := []byte(`{"columns":["account","parent_org","current_membership_count"],` +
+		`"data":[{"account":"Acme","parent_org":"Acme","current_membership_count":3},` +
+		`{"account":"Beta","parent_org":null,"current_membership_count":1}],` +
+		`"row_count":2,"applied":{"metric":"memberships","by":"org","row_count":2,"truncated":false}}`)
+	res, _, err := standardMetricResult(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := resultText(t, res)
+	var back map[string]any
+	if err := json.Unmarshal([]byte(text), &back); err != nil {
+		t.Fatalf("rendered result is not valid JSON: %v\n%s", err, text)
+	}
+	var want map[string]any
+	_ = json.Unmarshal(body, &want)
+	if !reflect.DeepEqual(back, want) {
+		t.Errorf("rendering changed a value:\n%s", text)
+	}
+	if !strings.Contains(text, `    {"account":"Acme","parent_org":"Acme","current_membership_count":3},`) {
+		t.Errorf("rows are not compact, one per line:\n%s", text)
+	}
+	if !strings.Contains(text, "\"applied\": {\n    \"metric\": \"memberships\"") {
+		t.Errorf("applied is no longer pretty-printed:\n%s", text)
+	}
+	// a body without data (an error object) falls back to the plain pretty print
+	res, _, _ = standardMetricResult([]byte(`{"detail":"x"}`))
+	if got := resultText(t, res); got != "{\n  \"detail\": \"x\"\n}" {
+		t.Errorf("fallback rendering changed: %q", got)
+	}
+}

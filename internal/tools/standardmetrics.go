@@ -5,6 +5,7 @@
 package tools
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -142,7 +143,51 @@ func handleStandardMetrics(ctx context.Context, _ *mcp.CallToolRequest, args Sta
 		}, nil, nil
 	}
 
-	return lensPrettyJSON(body)
+	return standardMetricResult(body)
+}
+
+// standardMetricResult renders a standard-metric result for the model: the
+// scalar members and `applied` pretty-printed as before, and `data` as one
+// compact row per line. A breakdown returns every row (there is no cap, by
+// design), so on a large one the row shape is where the bytes go; compact
+// rows cut the result several-fold without changing a value. Anything that
+// is not the expected object falls back to the plain pretty print.
+func standardMetricResult(body []byte) (*mcp.CallToolResult, any, error) {
+	var top map[string]json.RawMessage
+	if err := json.Unmarshal(body, &top); err != nil {
+		return lensPrettyJSON(body)
+	}
+	rawRows, ok := top["data"]
+	if !ok {
+		return lensPrettyJSON(body)
+	}
+	var rows []json.RawMessage
+	if err := json.Unmarshal(rawRows, &rows); err != nil {
+		return lensPrettyJSON(body)
+	}
+	compact := make([]string, 0, len(rows))
+	for _, row := range rows {
+		var buf bytes.Buffer
+		if err := json.Compact(&buf, row); err != nil {
+			return lensPrettyJSON(body)
+		}
+		compact = append(compact, "    "+buf.String())
+	}
+	delete(top, "data")
+	rest, err := json.MarshalIndent(top, "", "  ")
+	if err != nil {
+		return lensPrettyJSON(body)
+	}
+	// Splice the compact rows back in as the last member, so the object stays
+	// valid JSON and reads scalar members, applied, then the rows.
+	text := strings.TrimSuffix(string(rest), "\n}")
+	if text != "{" {
+		text += ","
+	}
+	text += "\n  \"data\": [\n" + strings.Join(compact, ",\n") + "\n  ]\n}"
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{&mcp.TextContent{Text: text}},
+	}, nil, nil
 }
 
 // standardMetricError is the text a failed call returns. The lens words every

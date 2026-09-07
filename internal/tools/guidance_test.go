@@ -419,8 +419,12 @@ func TestStandardMetricsGuidanceContent(t *testing.T) {
 		"report every row the series returned, or say how many rows\nthere are and which ones you show",
 		// round 11: executive readings vs the layer's (Part E)
 		"an organization with memberships on three projects counts three times",
-		"read the by=org rows and count them (or say \"memberships\", not \"members\")",
-		"paying members only = rows with revenue above zero",
+		"a reading this\n  family does not give yet (it arrives as its own metric)",
+		"say the organization reading is not\n  available rather than deriving it",
+		"a reading this family does not give yet (it arrives as its own metric): report memberships, say the grain",
+		"count with\n  by=total, list with limit and order_by (applied.row_count is the\n  breakdown's size)",
+		"last N years, last N months, trailing quarter",
+		"paying-only, new-to-the-LF and lost organizations are the same kind of reading",
 		"\"new logos\" (organizations new to the LF altogether) is a different reading this family does not give",
 		"an organization that dropped one project but kept another still counts here and is not a lost member",
 		"the LF region rollup lists China, India and Japan beside Asia Pacific",
@@ -550,7 +554,7 @@ func TestGuidanceCarriesNoCalendarDate(t *testing.T) {
 			}
 		}
 	}
-	for _, banned := range []string{"week of", "DBT-1 deployment lands", "from that deployment"} {
+	for _, banned := range []string{"week of", "DBT-1 deployment lands", "from that deployment", "count them"} {
 		if strings.Contains(standardMetricsGuidance, banned) {
 			t.Errorf("standard metric guidance still says %q", banned)
 		}

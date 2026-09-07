@@ -154,7 +154,7 @@ quarter or year series on an at-date family with no start_date runs from
 the first row of data. A future end_date does not move the default window
 start; a window that starts after today returns zero rows with
 includes_future_dated set — set start_date explicitly for a future-dated
-window. For a relative phrase (last N years, trailing quarter) take the
+window. For a relative phrase (last N years, last N months, trailing quarter) take the
 family's default window or a bare period series rather than a hand-picked
 start_date: a computed start clips the first period. Do not compute a
 start_date by counting back N years from today for "last N years": that
@@ -215,7 +215,7 @@ series adds `period` in front; an at-date series adds `period_end` too.
 
 | Family | Kind | by | What it answers | Result columns | Definition and caveat |
 |---|---|---|---|---|---|
-| memberships | at-date | total, org, tier, project, country, region | Memberships and list-price dues on end_date | [account, parent_org / tier / project, project_name / country / region,] current_membership_count, current_membership_revenue (membership_count, membership_revenue on any day but today and on a series) | Distinct project-account pairs with an active term: an organization with memberships on three projects counts three times — "how many members" in the everyday sense is distinct member organizations: read the by=org rows and count them (or say "memberships", not "members"); paying members only = rows with revenue above zero; revenue is LIST PRICE, not dues billed — never divide one by the other; memberships attach at foundation level; country and region are the account's billing country and its LF region (region is provisional); the LF region rollup lists China, India and Japan beside Asia Pacific — "APAC" in the everyday sense is those four rows together: report the sum and name the rows, or the stored row and say it excludes them; the NULL country row also holds accounts whose stored country spelling the lens does not resolve, not only accounts with no country |
+| memberships | at-date | total, org, tier, project, country, region | Memberships and list-price dues on end_date | [account, parent_org / tier / project, project_name / country / region,] current_membership_count, current_membership_revenue (membership_count, membership_revenue on any day but today and on a series) | Distinct project-account pairs with an active term: an organization with memberships on three projects counts three times; "how many members" in the everyday sense is distinct member organizations — a reading this family does not give yet (it arrives as its own metric): report memberships, say the grain, and say the organization reading is not available rather than deriving it; paying-only, new-to-the-LF and lost organizations are the same kind of reading — say which one you report; revenue is LIST PRICE, not dues billed — never divide one by the other; memberships attach at foundation level; country and region are the account's billing country and its LF region (region is provisional); the LF region rollup lists China, India and Japan beside Asia Pacific — "APAC" in the everyday sense is those four rows together: report the sum and name the rows, or the stored row and say it excludes them; the NULL country row also holds accounts whose stored country spelling the lens does not resolve, not only accounts with no country |
 | new_members | window | total, org, project | Memberships sold as new business, by install date | [account, parent_org / project, project_name,] new_membership_count | New business is first-per-project: an organization joining a second project counts again, and a lapsed account that rejoins counts again; "new logos" (organizations new to the LF altogether) is a different reading this family does not give — say which one you report; all history unless start_date |
 | membership_churn | window | total, org, project | Memberships that ended without renewal, by churn date | [...,] churned_membership_count | Churned memberships are project-account pairs that ended: an organization that dropped one project but kept another still counts here and is not a lost member — say which reading you report; the churn date is the day AFTER the term ended, so a term ending on 31 December counts in the following year; zero-revenue and quasi-associate memberships excluded |
 | contributors | window | total, org, project, country, region | Distinct code contributors | [account, parent_org / project, project_name / country / region,] total_contributors | Distinct people, bots excluded: never sum rows; country and region follow the PERSON and are known for about a third of contributors — the NULL row is the rest, and the NULL country row also holds people whose stored country spelling the lens does not resolve; the LF region rollup lists China, India and Japan beside Asia Pacific — "APAC" in the everyday sense is those four rows together: report the sum and name the rows, or the stored row and say it excludes them |
@@ -306,7 +306,10 @@ LF-hosted projects today", and the offer of the breakdown by project.
 - by=org rows come per account with the parent alongside: read account
   rankings straight off the rows, and take parent figures from
   subsidiaries=combined rather than from a client-side sum — for additive
-  metrics too: a top-N cut hides subsidiaries a hand-sum would miss.
+  metrics too: a top-N cut hides subsidiaries a hand-sum would miss; a
+  breakdown returns every row and can run to thousands: count with
+  by=total, list with limit and order_by (applied.row_count is the
+  breakdown's size).
 - "How many developers participated / took part" means participants (a
   code contribution OR a collaboration activity); name contributors (code
   only) as the narrower alternative, not the default.
@@ -323,10 +326,12 @@ LF-hosted projects today", and the offer of the breakdown by project.
   a series, the reading is date-based and the columns are membership_count
   and membership_revenue; say "as of <date>" and that it is the date-based
   count. memberships counts project-account pairs: an organization with
-  memberships on three projects counts three times. "How many members" in
-  the everyday sense is distinct member organizations — read the by=org rows
-  and count them (or say "memberships", not "members"); paying members only
-  = rows with revenue above zero.
+  memberships on three projects counts three times; "how many members" in
+  the everyday sense is distinct member organizations — a reading this
+  family does not give yet (it arrives as its own metric): report
+  memberships, say the grain, and say the organization reading is not
+  available rather than deriving it; paying-only, new-to-the-LF and lost
+  organizations are the same kind of reading — say which one you report.
 - contributions by=contributor and maintainer_contributions by=maintainer
   rows are GitHub identities: `handle` is the stored identity (a profile
   URL), `contributor` or `maintainer` the display name, `account` the one
