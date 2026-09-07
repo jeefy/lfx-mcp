@@ -450,9 +450,6 @@ func TestCriticalGuidanceSurvivesSchemaCompaction(t *testing.T) {
 	}
 }
 
-// TestAllLensToolDescriptionsFitBudget guards every description that ships in
-// tools/list, not just the semantic layer's. query_lfx_lens has far less
-// headroom and is the likeliest to drift past the cut unnoticed.
 // TestLayerToolsRouteToTheStandardMetricsFirst pins the first line of both
 // layer tool descriptions: the routing preamble is the action a model reads
 // before anything else, so it must be first and must name the inventory.
@@ -509,6 +506,9 @@ func TestNoToolCallsMembershipsATodayOnlySnapshot(t *testing.T) {
 	}
 }
 
+// TestAllLensToolDescriptionsFitBudget guards every description that ships in
+// tools/list, not just the semantic layer's. query_lfx_lens has far less
+// headroom and is the likeliest to drift past the cut unnoticed.
 func TestAllLensToolDescriptionsFitBudget(t *testing.T) {
 	for _, tc := range []struct {
 		name     string

@@ -135,10 +135,10 @@ state the window, never claim an exact UTC calendar month.
 Default is the trailing 12 months (the prior 365 complete days); state the concrete
 dates and reuse them in any lens question. YTD needs AND metric_time <= today —
 installs can be future-dated. Members as of date D: membership_count with metric_time
-<= 'D' AND asset_id__end_date >= 'D'; an end date that is NULL means still
-active, so the as-of predicate is `end_date IS NULL OR end_date > D`; today's
-actives are current_membership_count; new members = new_membership_count by
-install date.
+<= 'D' AND (asset_id__end_date IS NULL OR asset_id__end_date >= 'D') — an end
+date that is NULL means still active, so the predicate needs that branch;
+today's actives are current_membership_count; new members =
+new_membership_count by install date.
 
 ## Value discovery
 

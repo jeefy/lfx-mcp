@@ -244,8 +244,8 @@ func TestSemanticLayerGuidanceContent(t *testing.T) {
 		"the family counts\n  Accepted only",
 		"the family omits them",
 		"are unattributed there",
-		"an end date that is NULL means still\nactive",
-		"`end_date IS NULL OR end_date > D`",
+		"(asset_id__end_date IS NULL OR asset_id__end_date >= 'D')",
+		"an end\ndate that is NULL means still active",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("semantic layer guidance missing %q", want)
