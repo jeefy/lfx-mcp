@@ -118,26 +118,24 @@ func slugResolveError(slug string, err error) error {
 	return fmt.Errorf("failed to resolve project slug %q: %w", slug, err)
 }
 
-// goaTypedError is the shape shared by the Goa-generated typed errors
-// (BadRequestError, NotFoundError, InternalServerError, ServiceUnavailableError
-// in every vendored lfx-v2-* client). Their Error() method returns "", so the
-// message has to be read through GoaErrorName and the Message field.
+// goaTypedError is the shape shared by the Goa-generated typed errors.
+// Some types have an empty Error() and need GoaErrorName and Message to
+// describe the failure; others already provide error text.
 type goaTypedError interface {
 	error
 	GoaErrorName() string
 }
 
-// upstreamErrorText returns a non-blank description of err. For Goa typed
-// errors, whose Error() is "", it reads the Message field by reflection-free
-// means (fmt on the struct) and prefixes the Goa error name, e.g.
-// "BadRequest: date_from must be ISO 8601". Other errors return Error().
+// upstreamErrorText returns a non-blank description of err. Only when the
+// matched Goa typed error's Error() is empty does it synthesize the name and
+// Message, preserving any wrapping context. Nonblank error text is unchanged.
 func upstreamErrorText(err error) string {
 	if err == nil {
 		return ""
 	}
 	text := err.Error()
 	var typed goaTypedError
-	if errors.As(err, &typed) {
+	if errors.As(err, &typed) && typed.Error() == "" {
 		detail := typed.GoaErrorName()
 		if msg := goaMessage(typed); msg != "" {
 			detail += ": " + msg

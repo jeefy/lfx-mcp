@@ -173,10 +173,13 @@ func TestSearchProjects_IncludeTotalCountErrorDegradesToPage(t *testing.T) {
 		}
 	}
 	note, _ := out["note"].(string)
-	for _, want := range []string{"include_total", "count unavailable", "search backend unavailable", "page results are complete"} {
+	for _, want := range []string{"Include_total", "total unavailable", "search backend unavailable", "the requested page is retained"} {
 		if !strings.Contains(note, want) {
 			t.Errorf("note missing %q: %q", want, note)
 		}
+	}
+	if strings.Contains(strings.ToLower(note), "complete") {
+		t.Errorf("a retained page with a next token must not claim completeness: %q", note)
 	}
 
 	// 403 on the count keeps the access-denied wording inside the note.

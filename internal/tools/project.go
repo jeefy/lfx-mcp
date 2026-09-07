@@ -190,7 +190,7 @@ func handleSearchProjects(ctx context.Context, req *mcp.CallToolRequest, args Se
 			// The page itself succeeded; degrade rather than discard it. Total
 			// and total_complete stay absent so nothing reads as a complete zero.
 			logger.ErrorContext(ctx, "QueryResourcesCount failed", "error", err)
-			out.Note = friendlyAPIError("include_total: count unavailable", err) + "; the page results are complete. Retry without include_total or page to the end."
+			out.Note = friendlyAPIError("include_total: total unavailable", err) + "; the requested page is retained."
 		} else {
 			total := countResult.Count
 			complete := !countResult.HasMore

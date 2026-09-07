@@ -135,6 +135,38 @@ func TestNewToolLogger_NilSessionUsesServerHandlerOnly(t *testing.T) {
 	}
 }
 
+// TestUpstreamErrorText_GoaTypedErrorRendering distinguishes blank typed
+// errors that need detail from nonblank errors whose text must be preserved.
+func TestUpstreamErrorText_GoaTypedErrorRendering(t *testing.T) {
+	blank := &querysvc.BadRequestError{Message: "invalid date_from"}
+	nonblank := &committeeservice.ForbiddenError{Message: "organization grant required"}
+	if blank.Error() != "" || nonblank.Error() != "Forbidden" {
+		t.Fatal("fixture error methods do not match the vendored Goa contract")
+	}
+
+	for _, tc := range []struct {
+		name string
+		err  error
+		want string
+	}{
+		{"blank_direct", blank, "BadRequest: invalid date_from"},
+		{"blank_wrapped", fmt.Errorf("outer: %w", blank), "outer: BadRequest: invalid date_from"},
+		{"blank_nested", fmt.Errorf("outer: %w", fmt.Errorf("inner: %w", blank)), "outer: inner: BadRequest: invalid date_from"},
+		{"nonblank_direct", nonblank, "Forbidden"},
+		{"nonblank_wrapped", fmt.Errorf("outer: %w", nonblank), "outer: Forbidden"},
+		{"nonblank_nested", fmt.Errorf("outer: %w", fmt.Errorf("inner: %w", nonblank)), "outer: inner: Forbidden"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := upstreamErrorText(tc.err); got != tc.want {
+				t.Errorf("upstreamErrorText = %q, want %q", got, tc.want)
+			}
+			if got := friendlyAPIError("failed to get resource", tc.err); got != "Failed to get resource: "+tc.want {
+				t.Errorf("friendlyAPIError = %q, want %q", got, "Failed to get resource: "+tc.want)
+			}
+		})
+	}
+}
+
 // TestFriendlyAPIError_GoaTypedErrorsAreNotBlank pins that the Goa-generated
 // typed errors (whose Error() returns "") reach the caller with their name and
 // message instead of a bare "<Op>: ".
