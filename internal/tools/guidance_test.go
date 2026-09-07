@@ -245,10 +245,10 @@ func TestSemanticLayerGuidanceContent(t *testing.T) {
 		"the family counts\n  Accepted only",
 		"the family omits them",
 		"are unattributed there",
-		"(asset_id__end_date IS NULL OR asset_id__end_date >= 'D')",
+		"metric_time <= 'D' AND asset_id__end_date >= 'D' (end_date is never NULL",
 		"The 'tlf' slug is the umbrella's own\n  bucket, not the LF-wide scope; state which population you used.",
 		"An LF-wide total takes NO project; the\nfoundation's own slug (tlf) is one bucket, not the LF-wide scope.",
-		"an end\ndate that is NULL means still active",
+		"open-ended terms carry a far-future placeholder",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("semantic layer guidance missing %q", want)
@@ -292,7 +292,7 @@ func TestStandardMetricsGuidanceContent(t *testing.T) {
 		"rejects org",
 		// the two kinds
 		"A WINDOW family counts what happened between start_date and end_date\n     inclusive",
-		"An AT-DATE family reports the state on end_date",
+		"An AT-DATE family (memberships, maintainers, project_health,\n     software_value) reports the state on end_date",
 		"partial_last_period",
 		"the state on a single day is end_date alone",
 		"## The two kinds, with examples",

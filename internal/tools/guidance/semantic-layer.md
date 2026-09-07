@@ -134,11 +134,11 @@ state the window, never claim an exact UTC calendar month.
 
 Default is the trailing 12 months (the prior 365 complete days); state the concrete
 dates and reuse them in any lens question. YTD needs AND metric_time <= today —
-installs can be future-dated. Members as of date D: membership_count with metric_time
-<= 'D' AND (asset_id__end_date IS NULL OR asset_id__end_date >= 'D') — an end
-date that is NULL means still active, so the predicate needs that branch;
-today's actives are current_membership_count; new members =
-new_membership_count by install date.
+installs can be future-dated. Members as of date D: membership_count with
+metric_time <= 'D' AND asset_id__end_date >= 'D' (end_date is never NULL;
+open-ended terms carry a far-future placeholder); never churn_date, which
+is derived from a different end column and undercounts. Today's actives
+are current_membership_count; new members = new_membership_count by install date.
 
 ## Value discovery
 
@@ -313,7 +313,9 @@ that company's projects; by=org with project = that project's companies).
 Two kinds: a WINDOW family counts between start_date and end_date, and period
 adds one row per period; an AT-DATE family (memberships, maintainers,
 project_health, software_value) reports the state on end_date, and with
-period the state at each period end — "members at the end of 2022" and
+period the state at each period end. maintainers is the exception: today's
+roster only; with period, one row per period of today's maintainers active
+in it, not the roster at that time. "Members at the end of 2022" and
 "members at each year end" are memberships with end_date, or with start_date
 + period=year; no lens call needed. An LF-wide total takes NO project; the
 foundation's own slug (tlf) is one bucket, not the LF-wide scope. Every date is a UTC calendar day;

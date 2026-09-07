@@ -57,6 +57,10 @@ There is no since, until or as_of: a call that names one is rejected by the
 request schema as an unexpected property; the words are start_date and
 end_date. There is no free-form filter.
 
+by=year is accepted as a compatibility alias of period=year on new_members
+and membership_churn; it is not a grouping and the family lists do not
+include it.
+
 Answer four questions, then call once.
 
 1. WHICH METRIC, GROUPED HOW? Pick the family from the inventory by what it
@@ -87,11 +91,14 @@ Answer four questions, then call once.
    - A WINDOW family counts what happened between start_date and end_date
      inclusive. period adds one row per period, column `period` = the
      period's first day.
-   - An AT-DATE family reports the state on end_date. With period, one row
+   - An AT-DATE family (memberships, maintainers, project_health,
+     software_value) reports the state on end_date. With period, one row
      per period end from start_date to end_date; if end_date falls inside a
      period the last row is the state on end_date and the applied block says
-     partial_last_period. start_date without period on an at-date family is
-     a rejection: the state on a single day is end_date alone.
+     partial_last_period. maintainers is the exception: today's roster only;
+     with period, one row per period of today's maintainers active in it,
+     not the roster at that time. start_date without period on an at-date
+     family is a rejection: the state on a single day is end_date alone.
 
 ## The two kinds, with examples
 
@@ -106,11 +113,7 @@ date).
   project=cncf, start_date=2025-01-01, end_date=2025-12-31.
 - "Contributions per month this year" → contributions, start_date=<1 Jan>,
   period=month. Each row is one month; the last one is month-to-date.
-- "New members per year" → new_members, period=year (by=year still works
-  this release and means the same).
-
-AT-DATE: memberships (the active roster on a day), maintainers (today's
-roster), project_health and software_value (a daily snapshot).
+- "New members per year" → new_members, period=year.
 
 - "How many members does CNCF have" → memberships, project=cncf. Today's
   state, status-based.
@@ -124,8 +127,8 @@ roster), project_health and software_value (a daily snapshot).
   partial_last_period set.
 - "Maintainers over time" → maintainers, period=year: people on TODAY's
   roster with a code contribution in each year. The roster itself has no
-  honest history, so maintainers with an end_date other than today is a
-  rejection that says exactly this.
+  honest history, so maintainers without period and with an end_date other
+  than today is a rejection that says exactly this.
 - project_health: The count and the categories are v2. The average reads
   the v1 score now and will read the v2 score normalized to a hundred-point
   scale (raw v2 points over each project's coverage-dependent maximum) once
