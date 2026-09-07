@@ -37,7 +37,8 @@ STANDARD METRICS memberships, new_members, membership_churn, contributors, contr
 
 Read read_lfx_standard_metrics_guidance BEFORE the first call, and again whenever in doubt: it defines every grouping (by), switch, default and caveat.
 
-ALWAYS resolve names first: project slugs from search_projects, org names from search_b2b_orgs; never pass a name they have not returned.`
+ALWAYS resolve names first: project slugs from search_projects, org names from search_b2b_orgs; never pass a name they have not returned.
+An LF-wide question takes NO project; the foundation's own slug (tlf) is one bucket, not the LF-wide scope.`
 
 // RegisterStandardMetrics registers the query_lfx_standard_metrics tool.
 func RegisterStandardMetrics(server *mcp.Server) {
@@ -70,7 +71,7 @@ func RegisterStandardMetrics(server *mcp.Server) {
 type StandardMetricsArgs struct {
 	Metric       string `json:"metric" jsonschema:"Required. The family: memberships, new_members, membership_churn, contributors, contributions, contributing_organizations, participants, maintainers, maintainer_contributions, project_health, software_value, event_registrations, event_sponsorships, speakers, training_enrollments, certifications, social_mentions or social_reach. Each is a fixed set of metrics; by picks its grouping - there are no metrics/group_by parameters. Every family takes start_date, end_date and period: a WINDOW family counts what happened between the two dates, an AT-DATE family (memberships, maintainers, project_health, software_value) reports the state on end_date. read_lfx_standard_metrics_guidance lists every grouping, default and caveat."`
 	By           string `json:"by,omitempty" jsonschema:"Exactly one grouping from the family's list (read_lfx_standard_metrics_guidance): total = ONE figure for the scope; org, project, tier, country, region, event, course, type, platform, org_region, foundation, category, population, network, sentiment = one row each, as the family offers; contributor, maintainer = people by GitHub identity or the roster. Omitted = the family's first grouping (total). A grouping the family does not offer returns an error naming the valid ones."`
-	Project      string `json:"project,omitempty" jsonschema:"Optional project scope: ONE slug from search_projects, exact (e.g. cncf, k8s). Omitted = LF-wide. An unknown slug is rejected with candidate slugs; never guess one."`
+	Project      string `json:"project,omitempty" jsonschema:"Optional project scope: ONE slug from search_projects, exact (e.g. cncf, k8s). Omitted = LF-wide, which is what 'the Linux Foundation' as a whole means: do not pass tlf for it, that slug is the LF's own bucket, not the LF-wide scope, and the result says so. An unknown slug is rejected with candidate slugs; never guess one."`
 	Subprojects  string `json:"subprojects,omitempty" jsonschema:"What the project name covers: combined (default) = the project plus everything under it, any depth, folded into ONE figure; separate = one row each, the breakdown; excluded = that project's own bucket only."`
 	Org          string `json:"org,omitempty" jsonschema:"Optional organization scope: ONE stored legal account name from search_b2b_orgs, exact (e.g. Red Hat LLC). A name matching no data-bearing account is rejected with candidates; never guess one. Families whose model carries no account reject org."`
 	Subsidiaries string `json:"subsidiaries,omitempty" jsonschema:"What the org name covers: excluded (default) = that account only; separate = the account plus every subsidiary at any depth, one row each; combined = those folded into one row. Without org, combined on by=org is one row per parent organization."`

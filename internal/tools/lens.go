@@ -44,7 +44,7 @@ Use this tool ONLY as a FALLBACK: switch here only when the semantic layer genui
 
 Everything else - contributors, activities, memberships, events and sponsorships, registrations, education, maintainer rosters/counts/names, health, social listening (mentions, sentiment, reach) - belongs to explore_lfx_semantic_layer + query_lfx_semantic_layer. Committee/board rosters: the committee tools.
 
-project_slug is required default context, NOT a scope boundary. Find it via search_projects. For multiple foundations, pass one slug and name the others in input. LF-wide: use project_slug='tlf'.
+project_slug is required default context, NOT a scope boundary. Find it via search_projects. For multiple foundations, pass one slug and name the others in input. project_slug is a required CONTEXT field of this tool only, not a scope: for an LF-wide question pass 'tlf' here and say LF-wide in input. On every other tool the LF-wide scope is NO project at all, and 'tlf' is the Linux Foundation's own bucket, not the LF-wide scope.
 
 Runs synchronously; wait 15-30 seconds without retrying. Returns <=200 rows; request explicit pagination ("page 2", or stable ORDER BY with LIMIT/OFFSET). Windows: default trailing 12 months; state concrete yyyy-mm-dd dates or the SQL picks its own.`,
 		Annotations: &mcp.ToolAnnotations{
@@ -56,7 +56,7 @@ Runs synchronously; wait 15-30 seconds without retrying. Returns <=200 rows; req
 
 // QueryLFXLensArgs defines the input for query_lfx_lens.
 type QueryLFXLensArgs struct {
-	ProjectSlug string `json:"project_slug" jsonschema:"Required default context slug from search_projects, not a scope boundary. For multiple foundations, pass one here and name the others in input; use 'tlf' for LF-wide questions."`
+	ProjectSlug string `json:"project_slug" jsonschema:"Required default context slug from search_projects, not a scope boundary. For multiple foundations, pass one here and name the others in input. A context field of this tool only: for an LF-wide question pass 'tlf' here and say LF-wide in input; on every other tool 'tlf' is the Linux Foundation's own bucket, not the LF-wide scope."`
 	Input       string `json:"input" jsonschema:"Natural language question. Use for cross-domain joins and shapes no standard metric expresses; membership counts on any date or by year are the memberships standard metric, and the standard metrics already rank people (top contributors, top maintainers). Contributor, activity, membership, event, education, health and social listening questions belong to the semantic layer and its standard metrics - read read_lfx_semantic_layer_guidance before falling back here. Takes 15-30s. (required)"`
 }
 
@@ -172,7 +172,7 @@ If you have not read read_lfx_semantic_layer_guidance yet this session, read it 
 
 SYNTAX: metrics (required), CSV. group_by: dimension qualified_names copied from explore; add metric_time__year (or __quarter, __month) for trends. where is MetricFlow: {{ Dimension('country__lf_region') }} = 'Europe'; {{ TimeDimension('metric_time','DAY') }} >= '2024-01-01'; dates yyyy-mm-dd. limit optional.
 
-SCOPE lives in where (no project parameter). Foundation: {{ Dimension('project__foundation_slug') }} = '<slug>' (resolve via search_projects); NEVER scope a foundation with project_slug - its catch-all bucket, a silent undercount. Org/account filters take FULL LEGAL names - search_b2b_orgs first.
+SCOPE lives in where (no project parameter). Foundation: {{ Dimension('project__foundation_slug') }} = '<slug>' (resolve via search_projects); NEVER scope a foundation with project_slug - its catch-all bucket, a silent undercount. LF-wide ('the Linux Foundation' as a whole) = no project filter at all; 'tlf' is the LF's own bucket, not the LF-wide scope. Org/account filters take FULL LEGAL names - search_b2b_orgs first.
 
 0 rows = misspelled literal or wrong scope: get_dimension_values, then the guidance recipes, BEFORE any query_lfx_lens fallback. State definition and window with every answer.`
 

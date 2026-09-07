@@ -76,7 +76,10 @@ dimension by what the question names:
   {{ Dimension('project__foundation_slug') }} = '<slug>' — the conformed lens:
   works on every metric family, counts each row once. NEVER use project_slug for
   a foundation: it matches only the foundation's catch-all bucket, a silent ~40x
-  undercount on activities.
+  undercount on activities. The one exception is the umbrella itself: "The
+  Linux Foundation" as a whole is LF-wide — no project filter at all (or group
+  by foundation to show the split). The 'tlf' slug is the umbrella's own
+  bucket, not the LF-wide scope; state which population you used.
 - A SINGLE PROJECT (k8s, pytorch...): activity_project_id__project_slug — the
   per-project surface (__project_slug and __segment_slug), whose DEFINITION
   is code contributions, bots excluded. Do NOT reconcile figures against other
@@ -104,9 +107,6 @@ dimension by what the question names:
   and training carry the conformed project entity — scope them with
   project__foundation_slug / project__slug (event_id__project_name also works but
   needs the EXACT stored display name).
-- "The Linux Foundation": the 'tlf' slug is the umbrella foundation's own tree,
-  NOT the portfolio. LF-wide = unscoped or grouped by foundation; state which
-  population you used (they differ 3-4x on memberships).
 - Twins exist (risc-v-international/riscv, cff/cloud-foundry,
   opensearch-foundation/opensearch-project): low total → group by the slug.
   Compare entities with IN (...) + group_by; never total across spine groups.
@@ -315,7 +315,8 @@ adds one row per period; an AT-DATE family (memberships, maintainers,
 project_health, software_value) reports the state on end_date, and with
 period the state at each period end — "members at the end of 2022" and
 "members at each year end" are memberships with end_date, or with start_date
-+ period=year; no lens call needed. Every date is a UTC calendar day;
++ period=year; no lens call needed. An LF-wide total takes NO project; the
+foundation's own slug (tlf) is one bucket, not the LF-wide scope. Every date is a UTC calendar day;
 end_date defaults to today. The switches say what a name covers: excluded =
 that project or account alone, separate = it and everything under it one row
 each (the breakdown), combined = folded into one row (subprojects=combined

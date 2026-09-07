@@ -245,6 +245,8 @@ func TestSemanticLayerGuidanceContent(t *testing.T) {
 		"the family omits them",
 		"are unattributed there",
 		"(asset_id__end_date IS NULL OR asset_id__end_date >= 'D')",
+		"The 'tlf' slug is the umbrella's own\n  bucket, not the LF-wide scope; state which population you used.",
+		"An LF-wide total takes NO project; the\nfoundation's own slug (tlf) is one bucket, not the LF-wide scope.",
 		"an end\ndate that is NULL means still active",
 	} {
 		if !strings.Contains(text, want) {

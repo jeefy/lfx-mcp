@@ -471,6 +471,46 @@ func TestLayerToolsRouteToTheStandardMetricsFirst(t *testing.T) {
 // TestNoToolCallsMembershipsATodayOnlySnapshot pins the R17 fix: the memberships
 // standard metric reads any date and any period, so no tool or field text may
 // send a past-date or by-year membership question to the lens.
+// TestEveryClientTextSaysTlfIsNotTheLFWideScope pins R44: the foundation's own
+// slug is a bucket, and every tool that hands it over or accepts it says so in
+// the same words, so a client never adds tlf when the question is LF-wide.
+// query_lfx_lens is the one tool whose project_slug is a context field and
+// takes tlf for LF-wide; its text says that, and says the other tools do not.
+func TestEveryClientTextSaysTlfIsNotTheLFWideScope(t *testing.T) {
+	const phrase = "not the LF-wide scope"
+	for _, tc := range []struct {
+		name     string
+		register func(*mcp.Server)
+	}{
+		{"query_lfx_lens", RegisterQueryLFXLens},
+		{"query_lfx_semantic_layer", RegisterQuerySemanticLayer},
+		{"query_lfx_standard_metrics", RegisterStandardMetrics},
+		{"search_projects", RegisterSearchProjects},
+	} {
+		tool := listRegisteredTool(t, tc.name, tc.register)
+		raw, err := json.Marshal(tool.InputSchema)
+		if err != nil {
+			t.Fatalf("%s: marshal schema: %v", tc.name, err)
+		}
+		text := tool.Description + string(raw)
+		if !strings.Contains(text, phrase) {
+			t.Errorf("%s does not say %q", tc.name, phrase)
+		}
+		for _, banned := range []string{"use project_slug='tlf'", "use 'tlf' for LF-wide"} {
+			if strings.Contains(text, banned) {
+				t.Errorf("%s still says %q", tc.name, banned)
+			}
+		}
+	}
+	for name, text := range map[string]string{
+		"semantic layer guidance": semanticLayerGuidance,
+	} {
+		if !strings.Contains(text, phrase) {
+			t.Errorf("%s does not say %q", name, phrase)
+		}
+	}
+}
+
 func TestNoToolCallsMembershipsATodayOnlySnapshot(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
@@ -808,7 +848,7 @@ func TestQueryLFXLensScopeIsContextNotBoundary(t *testing.T) {
 		"For multiple foundations",
 		"name the others in input",
 		"LF-wide",
-		"project_slug='tlf'",
+		"pass 'tlf' here and say LF-wide in input",
 		// Lens generates its own SQL and picks arbitrary windows when the
 		// question leaves them open — the description must carry the default
 		// window convention and require concrete dates in the question.
@@ -836,7 +876,7 @@ func TestQueryLFXLensScopeIsContextNotBoundary(t *testing.T) {
 		"Required default context slug",
 		"not a scope boundary",
 		"name the others in input",
-		"'tlf' for LF-wide questions",
+		"not the LF-wide scope",
 	} {
 		if !strings.Contains(slug, want) {
 			t.Errorf("project_slug schema description missing %q: %q", want, slug)
