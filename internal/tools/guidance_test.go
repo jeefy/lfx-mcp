@@ -298,7 +298,7 @@ func TestStandardMetricsGuidanceContent(t *testing.T) {
 		"start_date=2020-01-01, end_date=2025-12-31, period=year",
 		"people on TODAY's\n  roster with a code contribution in each year",
 		"The roster itself has no\n  honest history",
-		"withheld under a coverage threshold",
+		"applied.coverage says how many LF-hosted projects carry a v2 score; give\n  it when the count is the answer",
 		// defaults and the applied block
 		"## Defaults and the applied block",
 		"end_date defaults to today (UTC)",
@@ -337,7 +337,6 @@ func TestStandardMetricsGuidanceContent(t *testing.T) {
 		"A superset of contributors",
 		"today's roster active in each period",
 		"Maintainership as of the build, contributions in the window",
-		"v2 score; snapshots start on 2026-08-25; a subset of LF-hosted projects (applied.coverage)",
 		"category is the stored v2 band name (Excellent, Healthy, Fair, Concerning, Critical), never a threshold",
 		"project_health_count, avg_project_health_score",
 		"additive across projects, never across days",
@@ -383,7 +382,7 @@ func TestStandardMetricsGuidanceContent(t *testing.T) {
 		"## Worked calls",
 		"One figure, window: contributors, project=cncf, start_date=2025-01-01",
 		"One figure, at-date: memberships, project=cncf",
-		"A series: new_members, project=tlf, period=year",
+		"A series, LF-wide: new_members, period=year, no project",
 		"An org with subsidiaries: contributions, org=International Business\n  Machines Corporation, subsidiaries=combined",
 		"A rejection: memberships, start_date=2020-01-01",
 		// errors
@@ -394,14 +393,24 @@ func TestStandardMetricsGuidanceContent(t *testing.T) {
 		"an unknown project slug: 400 with candidates",
 		"an order_by field that is not one of the result columns",
 		"no snapshot on or before end_date",
-		// round 7: the health version sentence stated once, first, in the row and the walkthrough
-		"The count and the categories are v2; the average reads v1 until the lf-dbt DBT-1 deployment lands — except by=population, which reads the v2 average already — and is the v2 health score normalized to a hundred-point scale (raw v2 points over each project's coverage-dependent maximum) from that deployment (week of 2026-09-07) on. A scored project without a stored maximum counts in the total but not in the average. v2 score;",
-		"- project_health: The count and the categories are v2; the average reads v1",
-		"A scored project\n  without a stored maximum counts in the total but not in the average.",
-		"on. A scored project without a stored maximum counts in the total but not in the average. v2 score;",
-		"v2 snapshots start on 2026-08-25, so an end_date\n  before that returns",
-		"applied.coverage says how many, out of the\n  LF-hosted projects with a health row on the snapshot day",
-		"The family reports the count of scored projects\n  and their mean score",
+		// round 9: date-free health disclosure; the tool reports the version
+		"- project_health: The count and the categories are v2. The average reads\n  the v1 score now and will read the v2 score normalized to a hundred-point\n  scale",
+		"applied.definition says which one\n  this call read",
+		"v2 snapshots have a short history",
+		"In the answer: the figure, the scope,\n  the snapshot day, and the version applied.definition gives — one line.",
+		"applied.definition says which average this call read (by=population reads the normalized v2 average already)",
+		"snapshots have a short history).",
+		// round 9: answer economy, the umbrella slug, placeholders, one lens query
+		"When unsure whether a note belongs, leave it\nout: the reader can ask.",
+		"\"How many members does the LF have\" →\nmemberships, no project",
+		"leave project unset. The foundation's own slug (tlf) names one bucket",
+		"A search_projects hit for the foundation's name\nis not a reason to scope.",
+		"- A series, LF-wide: new_members, period=year, no project",
+		"that is the bucket, not the LF.",
+		"naming one and dropping the other is the same failure as naming neither",
+		"report it as returned and name the\n  cause (a stray same-name account, say) as the caveat; do not re-issue it\n  with different filter logic",
+		"A scored project without a stored maximum counts in the total\n  but not in the average.",
+		"a scored project without a stored maximum counts in the total but not in the average; v2 snapshots have a short history;",
 		// round 7 addendum: preconditions, not background
 		"if a\nsibling with a '-fund' slug is there, the memberships sit on it",
 		"stating the stored spelling here does not exempt\nit: k8s, cncf and tlf still come back from search_projects in-session",
@@ -500,6 +509,32 @@ func TestGuidanceHealthIsV2ByName(t *testing.T) {
 	} {
 		if m := v1.FindString(text); m != "" {
 			t.Errorf("%s still carries the v1 health vocabulary: %q", name, m)
+		}
+	}
+}
+
+// TestGuidanceCarriesNoCalendarDate pins Josep's rule for disclosures: a
+// sentence says how a thing reads now and what it changes to, and the tool
+// reports which state applied; a calendar date or a deployment week makes
+// the sentence undecidable on the day it names. Years are allowed only as
+// worked-call parameters, MetricFlow date literals, quoted example questions
+// and the layer's stored sentinel value.
+func TestGuidanceCarriesNoCalendarDate(t *testing.T) {
+	year := regexp.MustCompile(`\b20\d\d\b`)
+	allowed := regexp.MustCompile(`_date=|'20\d\d-\d\d-\d\d'|"[^"]*20\d\d[^"]*"|2000-01-01 sentinel|in 20\d\d"`)
+	for name, text := range map[string]string{
+		"semantic layer guidance":  semanticLayerGuidance,
+		"standard metric guidance": standardMetricsGuidance,
+	} {
+		for n, line := range strings.Split(text, "\n") {
+			if year.MatchString(line) && !allowed.MatchString(line) {
+				t.Errorf("%s line %d carries a calendar date outside an example: %q", name, n+1, line)
+			}
+		}
+	}
+	for _, banned := range []string{"week of", "DBT-1 deployment lands", "from that deployment"} {
+		if strings.Contains(standardMetricsGuidance, banned) {
+			t.Errorf("standard metric guidance still says %q", banned)
 		}
 	}
 }

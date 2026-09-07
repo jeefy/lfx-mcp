@@ -22,7 +22,7 @@ not come back from them. The lens guards both: an unknown slug, or an
 organization name that matches no account carrying data, is a rejection
 with up to five candidates — never a zero. Pick from the candidates or go
 back to the search tool; never pass the everyday name again. The slugs in
-this document's worked calls (cncf, tlf, k8s) show the call shape only;
+this document's worked calls and examples (cncf, tlf, k8s) show the call shape only;
 resolve them in-session like any other name. Before any project-scoped
 membership figure, look at what search_projects returned for the name: if a
 sibling with a '-fund' slug is there, the memberships sit on it — query both
@@ -45,6 +45,13 @@ Every family takes the same parameters, and nothing per family:
 | period | day, week, month, quarter or year: one row per period | none = one figure |
 | order_by | result columns, - prefix for descending | none |
 | limit | maximum rows; the result says whether it was cut | none = every row |
+
+"The Linux Foundation" or "Linux Foundation X" as a whole means LF-wide:
+leave project unset. The foundation's own slug (tlf) names one bucket of a
+few dozen projects among the hosted ones, never the umbrella; pass it only
+when the question is about that bucket, and the result's applied.note says
+so whenever it is passed. A search_projects hit for the foundation's name
+is not a reason to scope.
 
 There is no since, until or as_of: a call that names one is rejected with
 the word to use instead. There is no free-form filter.
@@ -117,20 +124,18 @@ roster), project_health and software_value (a daily snapshot).
   roster with a code contribution in each year. The roster itself has no
   honest history, so maintainers with an end_date other than today is a
   rejection that says exactly this.
-- project_health: The count and the categories are v2; the average reads v1
-  until the lf-dbt DBT-1 deployment lands — except by=population, which
-  reads the v2 average already — and is the v2 health score normalized to a
-  hundred-point scale (raw v2 points over each project's coverage-dependent
-  maximum) from that deployment (week of 2026-09-07) on. A scored project
-  without a stored maximum counts in the total but not in the average.
-  It is read on the latest snapshot on or before end_date
-  (applied.snapshot_date); v2 snapshots start on 2026-08-25, so an end_date
-  before that returns "no snapshot on or before end_date", not a zero. The
-  v2 score is withheld under a coverage threshold, so only a subset of
-  LF-hosted projects carry one — applied.coverage says how many, out of the
-  LF-hosted projects with a health row on the snapshot day (more have been
-  tracked at some point). The family reports the count of scored projects
-  and their mean score. Say the coverage whenever the count is the answer.
+- project_health: The count and the categories are v2. The average reads
+  the v1 score now and will read the v2 score normalized to a hundred-point
+  scale (raw v2 points over each project's coverage-dependent maximum) once
+  the semantic-layer metric is redefined; applied.definition says which one
+  this call read, and by=population reads the normalized v2 average
+  already. A scored project without a stored maximum counts in the total
+  but not in the average. It is read on the latest snapshot on or before
+  end_date (applied.snapshot_date); v2 snapshots have a short history, and
+  an end_date before the first one is a rejection that says so, not a zero.
+  applied.coverage says how many LF-hosted projects carry a v2 score; give
+  it when the count is the answer. In the answer: the figure, the scope,
+  the snapshot day, and the version applied.definition gives — one line.
 - software_value is not pinned to one day: each LF-hosted project is read
   as of its own latest snapshot row on or before end_date, and a project
   whose latest row carries no value contributes nothing, so
@@ -218,13 +223,13 @@ series adds `period` in front; an at-date series adds `period_end` too.
 | participants | window | total, org, project | Distinct people with a code contribution OR a collaboration activity | [...,] total_contributors_with_collaboration | A superset of contributors (issues, comments, reviews count); distinct people: never sum rows |
 | maintainers | at-date | total, org, project, maintainer | Active maintainers today (LF projects only); with period, today's roster active in each period | [account / foundation, project, project_name / project, project_name, maintainer, account, role,] active_maintainers | Distinct people; LF projects only: an ad hoc count over the whole maintainers index reads higher; the NULL account row is maintainers with no resolved employer; today only unless period; by=maintainer has no series |
 | maintainer_contributions | window | total, org, project, maintainer | Code contributions by people on the CURRENT maintainer roster of the activity's project | [...,] maintainer_contributions[, contributing_maintainers] | Maintainership as of the build, contributions in the window; maintainer_contributions is additive, contributing_maintainers a distinct count; "share of work" is this over contributions for the same scope and window |
-| project_health | at-date | total, foundation, category, population | Projects with a v2 health score and their mean score, on the latest snapshot on or before end_date | [foundation / category / population,] project_health_count, avg_project_health_score | The count and the categories are v2; the average reads v1 until the lf-dbt DBT-1 deployment lands — except by=population, which reads the v2 average already — and is the v2 health score normalized to a hundred-point scale (raw v2 points over each project's coverage-dependent maximum) from that deployment (week of 2026-09-07) on. A scored project without a stored maximum counts in the total but not in the average. v2 score; snapshots start on 2026-08-25; a subset of LF-hosted projects (applied.coverage); LF-hosted unless by=population (rows lf_hosted and index); category is the stored v2 band name (Excellent, Healthy, Fair, Concerning, Critical), never a threshold; a distinct-project count: never sum rows; a mean of project scores: never re-average |
+| project_health | at-date | total, foundation, category, population | Projects with a v2 health score and their mean score, on the latest snapshot on or before end_date | [foundation / category / population,] project_health_count, avg_project_health_score | The count and the categories are v2; applied.definition says which average this call read (by=population reads the normalized v2 average already); a scored project without a stored maximum counts in the total but not in the average; v2 snapshots have a short history; a subset of LF-hosted projects (applied.coverage); LF-hosted unless by=population (rows lf_hosted and index); category is the stored v2 band name (Excellent, Healthy, Fair, Concerning, Critical), never a threshold; a distinct-project count: never sum rows; a mean of project scores: never re-average |
 | software_value | at-date | total, foundation, population | COCOMO software value summed over each LF-hosted project's own latest snapshot row on or before end_date, whatever day that row is on | [foundation / population,] total_software_value | USD; not pinned to one day (applied.snapshot_date is null): each project as of its own latest row; a project whose latest row is a health-only day contributes nothing, so totals read low, never inflated — applied.coverage says how many LF-hosted projects carry a value; additive across projects, never across days |
 | event_registrations | window | total, event, org | Accepted registrations of events starting in the window, and the distinct people behind them | [event / account, parent_org,] total_registrations, total_unique_registrants, total_checked_in_attendees | The window is the EVENT start date (an ad hoc query by registration date reads differently); registrants and attendees are distinct people by email: never sum them across rows; by=org is the registrant's account, NULL = unattributed |
 | event_sponsorships | window | total, org, event | Sponsorship revenue and count of events starting in the window | [account, parent_org / event,] total_sponsorship_revenue, total_sponsorship_count | Additive; USD; all tier types |
 | speakers | window | total, event | Accepted speakers of events starting in the window | [event,] total_speakers | Distinct people with an Accepted speaker status (Sessionize proposals accepted, Bevy listed speakers); rejected and in-review proposals are excluded, so an ad hoc count over all statuses reads higher; no org scope |
-| training_enrollments | window | total, org, course | Enrollments and enrolled users by enrollment date | [account, parent_org / course,] total_enrollments, total_enrolled_users | Platform data only (TI + edX), so lifetime totals read below the official trained figure; the edX branch carries no account and sits in the NULL account row; 'Individual - No Account' and 'TI Account' are placeholder accounts for unaffiliated learners: check the by=org rows for BOTH names before finalizing a table — the presence of one means the other is there too — and report them as unattributed, never as organizations, never silently dropped; by=org and by=course omit accounts and courses with no enrollment in the window; enrolled users is a distinct count |
-| certifications | window | total, org | Completed certifications by enrollment date | [account, parent_org,] total_certifications | Additive; counted at enrollment time; the edX branch has no account (the NULL account row); 'Individual - No Account' and 'TI Account' are placeholder accounts for unaffiliated learners: check the by=org rows for BOTH names before finalizing a table — the presence of one means the other is there too — and report them as unattributed, never as organizations, never silently dropped; by=org omits accounts with no certification in the window |
+| training_enrollments | window | total, org, course | Enrollments and enrolled users by enrollment date | [account, parent_org / course,] total_enrollments, total_enrolled_users | Platform data only (TI + edX), so lifetime totals read below the official trained figure; the edX branch carries no account and sits in the NULL account row; 'Individual - No Account' and 'TI Account' are placeholder accounts for unaffiliated learners: check the by=org rows for BOTH names before finalizing a table — the presence of one means the other is there too — and report them as unattributed, never as organizations, never silently dropped; both placeholder accounts are named in the answer — as rows or in one unattributed sentence; naming one and dropping the other is the same failure as naming neither; by=org and by=course omit accounts and courses with no enrollment in the window; enrolled users is a distinct count |
+| certifications | window | total, org | Completed certifications by enrollment date | [account, parent_org,] total_certifications | Additive; counted at enrollment time; the edX branch has no account (the NULL account row); 'Individual - No Account' and 'TI Account' are placeholder accounts for unaffiliated learners: check the by=org rows for BOTH names before finalizing a table — the presence of one means the other is there too — and report them as unattributed, never as organizations, never silently dropped; both placeholder accounts are named in the answer — as rows or in one unattributed sentence; naming one and dropping the other is the same failure as naming neither; by=org omits accounts with no certification in the window |
 | social_mentions | window | total, project, network, sentiment | Social listening mentions, distinct authors and sentiment by mention date | [project, project_name / network / sentiment,] social_listening_mentions, social_listening_unique_authors, social_listening_positive_mentions, social_listening_negative_mentions | Mention counts are additive; unique_authors is a distinct count; neutral or unknown sentiment is in neither positive nor negative; no org scope |
 | social_reach | window | total, project | Potential reach of the mentions by mention date | [project, project_name,] social_listening_total_author_followers, social_listening_avg_author_followers | The sum counts a prolific author once per mention; the average is per mention; NULL follower counts excluded; no org scope |
 
@@ -278,7 +283,12 @@ display names and keys. Column names, keys, engines, SQL and the other tools
 stay out unless the reader asks how a figure was made. Keep the rest in
 context: vocabulary, grains and hierarchy depth are said only when they
 answer the question or change the conclusion. Then offer the breakdown,
-another window or the series.
+another window or the series. When unsure whether a note belongs, leave it
+out: the reader can ask. Coverage, snapshot mechanics, version notes and
+thresholds appear only when they qualify THIS figure or the reader is
+contrasting it with another. "How many members does the LF have" →
+memberships, no project: the figure, "active memberships across the
+LF-hosted projects today", and the offer of the breakdown by project.
 
 ## Reading results
 
@@ -332,8 +342,10 @@ another window or the series.
   contributors to CNCF and its projects in 2025".
 - One figure, at-date: memberships, project=cncf → today's active
   memberships; add end_date=2024-12-31 for the year-end state (date-based).
-- A series: new_members, project=tlf, period=year → one row per year of
-  installation, the current year to date.
+- A series, LF-wide: new_members, period=year, no project → one row per
+  year of installation across the hosted projects, the current year to
+  date. (project=tlf here would give the foundation's own bucket of a few
+  dozen projects: that is the bucket, not the LF.)
 - An org with subsidiaries: contributions, org=International Business
   Machines Corporation, subsidiaries=combined → IBM and everything under it
   as one figure, because a rollup was asked for; absent that, start from
@@ -344,7 +356,10 @@ another window or the series.
   (the inventory row's status and source conditions), labelled as generated
   SQL; never several differently phrased attempts. Decide the lens query's
   scope before issuing it, not after seeing the result; a low or surprising
-  figure is not grounds for a second phrasing.
+  figure is not grounds for a second phrasing. If the one sanctioned lens
+  query returns a surprising figure, report it as returned and name the
+  cause (a stray same-name account, say) as the caveat; do not re-issue it
+  with different filter logic.
 - A rejection: memberships, start_date=2020-01-01 → "start_date needs period
   for an at-date metric; the state on a single day is end_date alone" — add
   period=year for the series, or drop start_date for one day.
@@ -372,4 +387,4 @@ not retry the same one.
 - an order_by field that is not one of the result columns (the message
   lists them, minus any column the call folds away).
 - a 404 on project_health: no snapshot on or before end_date (v2 health
-  snapshots start on 2026-08-25).
+  snapshots have a short history).
