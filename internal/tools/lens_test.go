@@ -251,7 +251,7 @@ func TestExploreSemanticLayerDescription(t *testing.T) {
 		"search_b2b_orgs",
 		// Routing to the neighbours.
 		"query_lfx_semantic_layer",
-		"past-date membership counts, cross-domain joins",
+		"query_lfx_lens is ONLY for cross-domain joins or guidance-sanctioned fallback",
 		"social listening (mentions, sentiment, reach)",
 		"Board/committee/ambassador rosters: committee tools",
 		"Start here unless exact names are known",
@@ -420,26 +420,18 @@ func TestCriticalGuidanceSurvivesSchemaCompaction(t *testing.T) {
 			tools: []*mcp.Tool{listStandardMetricsTool(t)},
 			tokens: []token{
 				{"read_lfx_standard_metrics_guidance", "the standard metric inventory is only reachable if the tool routes the model to it"},
-				{"memberships", "standard metric names cannot be guessed, and the inventory reaches the model only here"},
-				// The domain grouping is what tells a caller whether this
-				// tool covers its question at all, so each domain line is
-				// pinned by name.
-				{"memberships (SNAPSHOT): total | org | tier", "the membership inventory, its shape and its groupings reach the model only here"},
-				{"contributors (FLOW): total | org | project", "the contribution inventory, its shape and its groupings reach the model only here"},
-				{"maintainers (SNAPSHOT): total | org | project | maintainer", "the maintainer inventory, its shape and its groupings reach the model only here"},
-				{"maintainer_contributions (FLOW): total | org | project | maintainer", "the maintainer-contribution inventory reaches the model only here"},
+				{"BEFORE the first call", "the guidance defines every grouping, switch and default; the description only routes to it"},
+				// The family names tell a caller whether this tool covers
+				// its question at all, so the whole inventory is pinned:
+				// on the description AND on the required metric parameter.
+				{"STANDARD METRICS memberships, new_members, membership_churn, contributors, contributions, contributing_organizations, participants, maintainers, maintainer_contributions, project_health, software_value, event_registrations, event_sponsorships, speakers, training_enrollments, certifications, social_mentions, social_reach.", "the family inventory reaches the model only here"},
 				{"search_projects", "project takes the stored slug; an everyday name silently misses"},
 				{"search_b2b_orgs", "org takes the stored legal name; a short name silently misses"},
-				{"subprojects", "what a project name covers is a choice the caller has to be told about"},
-				{"subsidiaries", "what an organization name covers is a choice the caller has to be told about"},
-				{"Default combined", "the subprojects default folds the tree into one figure"},
-				{"Default excluded", "the subsidiaries default changes which rows come back"},
-				{"trailing 365 days", "the contribution window default is applied silently otherwise"},
-				{"applied block", "the response says which defaults ran; the model must know to read it"},
-				{"yyyy-mm-dd", "date format silently returns wrong rows if guessed"},
-				{"Omitted = every row", "an omitted limit returns the complete set"},
-				{"FLOW", "since/until on the wrong shape is rejected, not silently ignored"},
-				{"SNAPSHOT", "as_of on the wrong shape is rejected, not silently ignored"},
+				{"never pass a name they have not returned", "a guessed literal is a confident wrong answer, not an error"},
+				{"start_date, end_date and period", "the three date parameters replace since/until/as_of; a caller on the old contract must learn the new words here"},
+				{"WINDOW", "the two kinds decide what end_date means; the model must know there are two"},
+				{"AT-DATE", "the two kinds decide what end_date means; the model must know there are two"},
+				{"state on end_date", "an at-date family reports a state, not a count between dates"},
 			},
 		},
 	} {
@@ -455,6 +447,105 @@ func TestCriticalGuidanceSurvivesSchemaCompaction(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestLayerToolsRouteToTheStandardMetricsFirst pins the first line of both
+// layer tool descriptions: the routing preamble is the action a model reads
+// before anything else, so it must be first and must name the inventory.
+func TestLayerToolsRouteToTheStandardMetricsFirst(t *testing.T) {
+	const preamble = "If a standard metric answers the question (inventory: read_lfx_standard_metrics_guidance), call query_lfx_standard_metrics and do not explore first."
+	for name, desc := range map[string]string{
+		"explore": exploreSemanticLayerDescription,
+		"query":   querySemanticLayerDescription,
+	} {
+		if !strings.HasPrefix(desc, preamble) {
+			t.Errorf("%s description does not start with the routing preamble", name)
+		}
+		if strings.Count(desc, "query_lfx_standard_metrics") != 1 {
+			t.Errorf("%s description should route to the standard metrics once, in the preamble", name)
+		}
+	}
+}
+
+// TestNoToolCallsMembershipsATodayOnlySnapshot pins the R17 fix: the memberships
+// standard metric reads any date and any period, so no tool or field text may
+// send a past-date or by-year membership question to the lens.
+// TestEveryClientTextSaysTlfIsNotTheLFWideScope pins R44: the foundation's own
+// slug is a bucket, and every tool that hands it over or accepts it says so in
+// the same words, so a client never adds tlf when the question is LF-wide.
+// query_lfx_lens is the one tool whose project_slug is required: tlf goes
+// there as context and the LF-wide scope is said in the input; no client text
+// may read as "tlf gives LF-wide".
+func TestEveryClientTextSaysTlfIsNotTheLFWideScope(t *testing.T) {
+	const phrase = "not the LF-wide scope"
+	for _, tc := range []struct {
+		name     string
+		register func(*mcp.Server)
+	}{
+		{"query_lfx_lens", RegisterQueryLFXLens},
+		{"query_lfx_semantic_layer", RegisterQuerySemanticLayer},
+		{"query_lfx_standard_metrics", RegisterStandardMetrics},
+		{"search_projects", RegisterSearchProjects},
+	} {
+		tool := listRegisteredTool(t, tc.name, tc.register)
+		raw, err := json.Marshal(tool.InputSchema)
+		if err != nil {
+			t.Fatalf("%s: marshal schema: %v", tc.name, err)
+		}
+		text := tool.Description + string(raw)
+		if !strings.Contains(text, phrase) {
+			t.Errorf("%s does not say %q", tc.name, phrase)
+		}
+		for _, banned := range []string{
+			"use project_slug='tlf'", "use 'tlf' for LF-wide", "tlf for LF-wide", "takes tlf for LF-wide",
+		} {
+			if strings.Contains(text, banned) {
+				t.Errorf("%s still says %q", tc.name, banned)
+			}
+		}
+	}
+	for name, text := range map[string]string{
+		"semantic layer guidance": semanticLayerGuidance,
+	} {
+		if !strings.Contains(text, phrase) {
+			t.Errorf("%s does not say %q", name, phrase)
+		}
+	}
+}
+
+func TestNoToolCallsMembershipsATodayOnlySnapshot(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		register func(*mcp.Server)
+	}{
+		{"explore_lfx_semantic_layer", RegisterExploreSemanticLayer},
+		{"query_lfx_semantic_layer", RegisterQuerySemanticLayer},
+		{"query_lfx_lens", RegisterQueryLFXLens},
+	} {
+		tool := listRegisteredTool(t, tc.name, tc.register)
+		texts := []string{tool.Description}
+		if tool.InputSchema != nil {
+			raw, err := json.Marshal(tool.InputSchema)
+			if err != nil {
+				t.Fatalf("%s: marshal schema: %v", tc.name, err)
+			}
+			texts = append(texts, string(raw))
+		}
+		for _, text := range texts {
+			for _, banned := range []string{"today-only", "past-date membership", "past-date or by-year"} {
+				if strings.Contains(text, banned) {
+					t.Errorf("%s still says %q", tc.name, banned)
+				}
+			}
+		}
+	}
+	lens := listRegisteredTool(t, "query_lfx_lens", RegisterQueryLFXLens)
+	if !strings.Contains(lens.Description, "Use this tool ONLY as a FALLBACK") {
+		t.Error("query_lfx_lens description should open its use list with the fallback rule")
+	}
+	if !strings.Contains(lens.Description, "Membership counts on any date or by year are the memberships standard metric") {
+		t.Error("query_lfx_lens description should send membership counts on any date to the standard metric")
 	}
 }
 
@@ -760,7 +851,7 @@ func TestQueryLFXLensScopeIsContextNotBoundary(t *testing.T) {
 		"For multiple foundations",
 		"name the others in input",
 		"LF-wide",
-		"project_slug='tlf'",
+		"pass 'tlf' here and say LF-wide in input",
 		// Lens generates its own SQL and picks arbitrary windows when the
 		// question leaves them open — the description must carry the default
 		// window convention and require concrete dates in the question.
@@ -788,7 +879,7 @@ func TestQueryLFXLensScopeIsContextNotBoundary(t *testing.T) {
 		"Required default context slug",
 		"not a scope boundary",
 		"name the others in input",
-		"'tlf' for LF-wide questions",
+		"not the LF-wide scope",
 	} {
 		if !strings.Contains(slug, want) {
 			t.Errorf("project_slug schema description missing %q: %q", want, slug)
@@ -814,9 +905,11 @@ func TestQueryLFXLensDoesNotClaimMemberships(t *testing.T) {
 			t.Errorf("query_lfx_lens description still claims memberships: %q", unwanted)
 		}
 	}
+	// the handoff is the governed route first, the layer when no family fits
 	if !strings.Contains(tool.Description, "Everything else - contributors, activities, memberships") ||
-		!strings.Contains(tool.Description, "belongs to explore_lfx_semantic_layer") {
-		t.Error("query_lfx_lens description should hand memberships to the semantic layer explicitly")
+		!strings.Contains(tool.Description, "is a standard metric first (query_lfx_standard_metrics") ||
+		!strings.Contains(tool.Description, "then explore_lfx_semantic_layer + query_lfx_semantic_layer when no family fits") {
+		t.Error("query_lfx_lens description should hand memberships to the standard metrics, then the semantic layer, explicitly")
 	}
 
 	input := schemaPropertyDescription(t, tool, "input")

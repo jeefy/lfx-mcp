@@ -31,22 +31,22 @@ func metricLimit(value int) *int { return &value }
 // Description and schema
 // ---------------------------------------------------------------------------
 
-// standardMetricsDescriptionCeiling is tighter than the hard schema budget:
-// this description is read on every tools/list alongside ten siblings, so it
-// is held to the space the contract, the metric inventory and the two
-// defaults actually need, with headroom for the next metric name rather than
-// for more prose.
-const standardMetricsDescriptionCeiling = 1950
+// standardMetricsDescriptionCeiling is far tighter than the hard schema
+// budget: the description only ROUTES (the families, read the guidance,
+// resolve names first); every grouping, switch, default and caveat lives in
+// read_lfx_standard_metrics_guidance, which carries no byte budget. The
+// ceiling leaves room for the next family name, not for more prose.
+const standardMetricsDescriptionCeiling = 1000
 
 // standardMetricParameters is the whole contract; anything else is not a parameter of
-// this tool.
+// this tool. since, until and as_of are gone, not aliased.
 var standardMetricParameters = []string{
 	"metric", "by", "project", "subprojects", "org", "subsidiaries",
-	"since", "until", "as_of", "order_by", "limit",
+	"start_date", "end_date", "period", "order_by", "limit",
 }
 
 // standardMetricNames is the whole inventory, in the order the guidance lists
-// it: the lens registry exposes exactly these seven metric families (each with
+// it: the lens registry exposes exactly these eighteen families (each with
 // its own groupings under by), so this list is what the routing surface must
 // name — no more, and none of them missing.
 var standardMetricNames = []string{
@@ -55,22 +55,70 @@ var standardMetricNames = []string{
 	"membership_churn",
 	"contributors",
 	"contributions",
+	"contributing_organizations",
+	"participants",
 	"maintainers",
 	"maintainer_contributions",
+	"project_health",
+	"software_value",
+	"event_registrations",
+	"event_sponsorships",
+	"speakers",
+	"training_enrollments",
+	"certifications",
+	"social_mentions",
+	"social_reach",
 }
 
-// standardMetricGroupings is each family's shape and groupings as the
-// description lists them: the shape says which time parameter applies, and
-// the groupings come in the order the lens offers them, the first being the
-// default the lens applies when by is omitted.
+// standardMetricKinds is each family's kind as the guidance lists it: a
+// window family counts between start_date and end_date, an at-date family
+// reports the state on end_date. The four at-date families are also named
+// on the required metric parameter, where they survive schema compaction.
+var standardMetricKinds = map[string]string{
+	"memberships":                "at-date",
+	"new_members":                "window",
+	"membership_churn":           "window",
+	"contributors":               "window",
+	"contributions":              "window",
+	"contributing_organizations": "window",
+	"participants":               "window",
+	"maintainers":                "at-date",
+	"maintainer_contributions":   "window",
+	"project_health":             "at-date",
+	"software_value":             "at-date",
+	"event_registrations":        "window",
+	"event_sponsorships":         "window",
+	"speakers":                   "window",
+	"training_enrollments":       "window",
+	"certifications":             "window",
+	"social_mentions":            "window",
+	"social_reach":               "window",
+}
+
+// standardMetricGroupings is each family's groupings as the GUIDANCE lists
+// them, in the order the lens offers them, the first being the default the
+// lens applies when by is omitted. The description no longer carries them;
+// TestStandardMetricsGuidanceContent derives the inventory rows from this
+// map, so it is the single source.
 var standardMetricGroupings = map[string]string{
-	"memberships":              "(SNAPSHOT): total | org | tier",
-	"new_members":              "(FLOW, install date): year",
-	"membership_churn":         "(FLOW, churn date): year",
-	"contributors":             "(FLOW): total | org | project",
-	"contributions":            "(FLOW): total | org | project | contributor",
-	"maintainers":              "(SNAPSHOT): total | org | project | maintainer",
-	"maintainer_contributions": "(FLOW): total | org | project | maintainer",
+	"memberships":                "total, org, tier, project, country, region",
+	"new_members":                "total, org, project",
+	"membership_churn":           "total, org, project",
+	"contributors":               "total, org, project, country, region",
+	"contributions":              "total, org, project, contributor, type, platform, org_region",
+	"contributing_organizations": "total, project",
+	"participants":               "total, org, project",
+	"maintainers":                "total, org, project, maintainer",
+	"maintainer_contributions":   "total, org, project, maintainer",
+	"project_health":             "total, foundation, category, population",
+	"software_value":             "total, foundation, population",
+	"event_registrations":        "total, event, org",
+	"event_sponsorships":         "total, org, event",
+	"speakers":                   "total, event",
+	"training_enrollments":       "total, org, course",
+	"certifications":             "total, org",
+	"social_mentions":            "total, project, network, sentiment",
+	"social_reach":               "total, project",
 }
 
 // TestStandardMetricsDescription_FitsSchemaBudget holds the tool to the same budget as
@@ -92,20 +140,15 @@ func TestStandardMetricsDescription_FitsSchemaBudget(t *testing.T) {
 	}
 }
 
-// TestStandardMetricsDescription_ListsTheInventoryByDomain pins the domain
-// inventory: a caller cannot guess a metric name, and the domains tell it
-// whether loading the guidance is worth it at all. The grouping sits near the
-// top of the description so it survives schema compaction.
-func TestStandardMetricsDescription_ListsTheInventoryByDomain(t *testing.T) {
-	for _, name := range standardMetricNames {
-		want := name + " " + standardMetricGroupings[name] + "\n"
-		if !strings.Contains(standardMetricsDescription, want) {
-			t.Errorf("description missing inventory line %q", want)
-		}
+// TestStandardMetricsDescription_ListsTheInventory pins the inventory line:
+// a caller cannot guess a metric name, so every family is named in the
+// description, in one line, ABOVE the line that routes to the guidance — a
+// client that truncates the description keeps the names.
+func TestStandardMetricsDescription_ListsTheInventory(t *testing.T) {
+	want := "STANDARD METRICS " + strings.Join(standardMetricNames, ", ") + "."
+	if !strings.Contains(standardMetricsDescription, want) {
+		t.Errorf("description missing inventory line %q", want)
 	}
-	// Every advertised name is in the inventory, and the inventory comes
-	// before the line that routes to the guidance: a client that truncates
-	// the description keeps the names.
 	inventoryEnd := strings.Index(standardMetricsDescription, "read_lfx_standard_metrics_guidance")
 	if inventoryEnd < 0 {
 		t.Fatal("description does not route to read_lfx_standard_metrics_guidance")
@@ -118,39 +161,38 @@ func TestStandardMetricsDescription_ListsTheInventoryByDomain(t *testing.T) {
 	}
 }
 
-// TestStandardMetricsDescription_CarriesTheContract pins the contract the description is
-// the only carrier of: every parameter line, both switch defaults, the
-// resolve-first rule, the shape rule, and the routing to the guidance tools.
-func TestStandardMetricsDescription_CarriesTheContract(t *testing.T) {
+// TestStandardMetricsDescription_OnlyRoutes pins the product decision on the
+// description: function, never rationale. It says what the tool does, names
+// the families, routes to the guidance and states the one rule a caller must
+// not get wrong before reading anything (resolve names first). Groupings,
+// switches, defaults, shapes and caveats live in the guidance, so their
+// vocabulary must NOT be in the description.
+func TestStandardMetricsDescription_OnlyRoutes(t *testing.T) {
 	for _, want := range []string{
-		"prefer it over explore + query",
-		"read_lfx_standard_metrics_guidance",
+		"Run a governed standard metric",
+		"one figure or one row per grouping",
+		"scoped by project, organization and dates",
+		"applied scope echoed",
+		"STANDARD METRICS ",
+		"Read read_lfx_standard_metrics_guidance BEFORE the first call",
+		"again whenever in doubt",
+		"every grouping (by), switch, default and caveat",
 		"ALWAYS resolve names first",
 		"search_projects",
 		"search_b2b_orgs",
 		"never pass a name they have not returned",
-		"metric ",
-		"project ",
-		"subprojects",
-		"excluded | separate | combined",
-		"Default combined",
-		"subsidiaries",
-		"Default excluded",
-		"since, until",
-		"trailing 365 days",
-		"applied block",
-		"as_of",
-		"No free filter",
-		"order_by",
-		"Omitted = every row",
-		"yyyy-mm-dd",
-		"FLOW",
-		"SNAPSHOT",
-		"Errors name the fix",
-		"compiled_sql",
 	} {
 		if !strings.Contains(standardMetricsDescription, want) {
-			t.Errorf("description missing contract fragment %q", want)
+			t.Errorf("description missing routing fragment %q", want)
+		}
+	}
+	for _, gone := range []string{
+		"FLOW", "SNAPSHOT", "since", "until", "as_of", "excluded | separate | combined",
+		"trailing 365", "yyyy-mm-dd", "compiled_sql", "No free filter", "PARAMETERS",
+		"window family", "at-date family",
+	} {
+		if strings.Contains(standardMetricsDescription, gone) {
+			t.Errorf("description carries %q; that is guidance, not routing", gone)
 		}
 	}
 }
@@ -179,20 +221,11 @@ func TestStandardMetricsSurface_NamesNoWarehouseRecipe(t *testing.T) {
 			}
 		}
 	}
-	// The events and training recipes left the lens registry; they are
-	// composed ad hoc through the semantic-layer guidance and named nowhere
-	// as standard metrics.
-	for _, gone := range []string{"event_registrations", "training_enrollments"} {
-		if strings.Contains(standardMetricsDescription, gone) {
-			t.Errorf("tool description names the removed recipe family %q", gone)
-		}
-		if strings.Contains(standardMetricsGuidance, gone) {
-			t.Errorf("standard metric guidance names the removed recipe family %q", gone)
-		}
-	}
-	// (By is back with a new meaning - the grouping a family offers - so it
-	// is not in this list.)
-	for _, field := range []string{"SavedQuery", "Foundation", "Where"} {
+	// The removed date parameters are gone from the argument struct, not
+	// aliased: the SDK's closed schema refuses a call that sends one, naming
+	// the unexpected property (TestStandardMetrics_LegacyNamesAreRejectedAtTheSchema),
+	// and nothing here translates it silently.
+	for _, field := range []string{"SavedQuery", "Foundation", "Where", "Since", "Until", "AsOf"} {
 		if _, ok := reflect.TypeOf(StandardMetricsArgs{}).FieldByName(field); ok {
 			t.Errorf("StandardMetricsArgs still carries %s; it is not part of the contract", field)
 		}
@@ -202,12 +235,20 @@ func TestStandardMetricsSurface_NamesNoWarehouseRecipe(t *testing.T) {
 // TestStandardMetrics_RequiredParamSurvivesCompaction mirrors the compaction contract on
 // the other semantic layer tools: only the tool description and REQUIRED
 // parameter descriptions reliably reach the model, so the inventory of standard metric
-// names, the fixed-recipe rule and the FLOW/SNAPSHOT split must be stated on
-// metric, not only on the optional parameters that carry them.
+// names, the fixed-recipe rule, the three date parameters and the
+// window/at-date split must be stated on metric, not only on the optional
+// parameters that carry them.
 func TestStandardMetrics_RequiredParamSurvivesCompaction(t *testing.T) {
 	desc := schemaPropertyDescription(t, listStandardMetricsTool(t), "metric")
+	var atDate []string
+	for _, name := range standardMetricNames {
+		if standardMetricKinds[name] == "at-date" {
+			atDate = append(atDate, name)
+		}
+	}
 	for _, want := range append([]string{
-		"metrics", "group_by", "read_lfx_standard_metrics_guidance", "since/until", "as_of", "FLOW", "SNAPSHOT",
+		"metrics/group_by", "read_lfx_standard_metrics_guidance", "start_date, end_date and period",
+		"WINDOW", "AT-DATE family (" + strings.Join(atDate, ", ") + ")", "state on end_date",
 	}, standardMetricNames...) {
 		if !strings.Contains(desc, want) {
 			t.Errorf("metric description does not mention %q — the contract must survive schema compaction", want)
@@ -257,8 +298,9 @@ func TestStandardMetrics_SendsTheArgumentsAsGiven(t *testing.T) {
 		Subprojects:  "excluded",
 		Org:          "International Business Machines Corporation",
 		Subsidiaries: "combined",
-		Since:        "2025-09-01",
-		Until:        "2026-09-01",
+		StartDate:    "2025-09-01",
+		EndDate:      "2026-09-01",
+		Period:       "month",
 		OrderBy:      "-total_contributors",
 		Limit:        metricLimit(10),
 	})
@@ -274,7 +316,7 @@ func TestStandardMetrics_SendsTheArgumentsAsGiven(t *testing.T) {
 
 	want := `{"metric":"contributors","by":"org","project":"cncf","subprojects":"excluded",` +
 		`"org":"International Business Machines Corporation","subsidiaries":"combined",` +
-		`"since":"2025-09-01","until":"2026-09-01",` +
+		`"start_date":"2025-09-01","end_date":"2026-09-01","period":"month",` +
 		`"order_by":["-total_contributors"],"limit":10}`
 	if got := string(captured.Body); got != want {
 		t.Errorf("request body =\n%s\nwant\n%s", got, want)
@@ -361,12 +403,12 @@ func TestStandardMetrics_ReturnsTheLensBody(t *testing.T) {
 // Lens rejections ARE the contract: each names the rule the call broke and
 // the fix, so the caller reads that message and not a wrapper invented here.
 func TestStandardMetrics_PassesLensRejectionsThrough(t *testing.T) {
-	rejection := "memberships is a SNAPSHOT metric: it reports the state on a date, so since/until do not apply. Use as_of, or pick a FLOW metric."
+	rejection := "start_date needs period for an at-date metric; the state on a single day is end_date alone."
 	setupLensErrorTest(t, http.StatusBadRequest, `{"detail":`+mustJSONString(t, rejection)+`}`)
 
 	res, _, err := handleStandardMetrics(context.Background(), &mcp.CallToolRequest{}, StandardMetricsArgs{
-		Metric: "memberships",
-		Since:  "2025-01-01",
+		Metric:    "memberships",
+		StartDate: "2025-01-01",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -376,6 +418,90 @@ func TestStandardMetrics_PassesLensRejectionsThrough(t *testing.T) {
 	}
 	if got := resultText(t, res); got != rejection {
 		t.Errorf("tool error = %q, want the lens rejection verbatim: %q", got, rejection)
+	}
+}
+
+// The org and project guards reject with an object: a message and the
+// candidates the caller should pick from. Both reach the model; the
+// candidates are the fix, so dropping them would leave the caller guessing.
+func TestStandardMetrics_RendersGuardCandidates(t *testing.T) {
+	setupLensErrorTest(t, http.StatusBadRequest, `{"detail":{"message":"no data-bearing account named 'IBM'. org takes the stored legal name; pick one of these","candidates":[{"account_name":"International Business Machines Corporation","account_rollup_name":"International Business Machines Corporation","active_memberships":23,"trailing_year_contributions":229350}]}}`)
+
+	res, _, err := handleStandardMetrics(context.Background(), &mcp.CallToolRequest{}, StandardMetricsArgs{Metric: "contributions", Org: "IBM"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !res.IsError {
+		t.Fatal("expected an error result")
+	}
+	text := resultText(t, res)
+	for _, want := range []string{"no data-bearing account named 'IBM'", "pick one of these", "International Business Machines Corporation", "229350"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("tool error = %q, want it to carry %q", text, want)
+		}
+	}
+}
+
+// A 422 from the lens carries a LIST of validation errors (a bad date, a
+// limit below one, a wrong fold word); the message inside names the rule and
+// the fix, and that is what the model must read. The legacy names since /
+// until / as_of never reach the lens from this tool: the SDK rejects them at
+// the schema (see TestStandardMetrics_LegacyNamesAreRejectedAtTheSchema).
+func TestStandardMetrics_RendersValidationErrors(t *testing.T) {
+	setupLensErrorTest(t, http.StatusUnprocessableEntity, `{"detail":[{"type":"value_error","loc":["body"],"msg":"Value error, since is now start_date. Every family takes start_date, end_date and period."}]}`)
+
+	res, _, err := handleStandardMetrics(context.Background(), &mcp.CallToolRequest{}, StandardMetricsArgs{Metric: "contributors"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got, want := resultText(t, res), "since is now start_date. Every family takes start_date, end_date and period."; got != want {
+		t.Errorf("tool error = %q, want %q", got, want)
+	}
+}
+
+// TestDetailText pins every shape of lens detail the tool renders, and the
+// fallback to nothing (so standardMetricError shows the whole body) when the
+// detail is none of them.
+func TestDetailText(t *testing.T) {
+	for name, tc := range map[string]struct {
+		detail string
+		want   string
+	}{
+		"string": {`"limit must be at least 1, got 0."`, "limit must be at least 1, got 0."},
+		"guard without candidates": {
+			`{"message":"no project with slug 'zzz'. project takes the stored slug; resolve it with search_projects first","candidates":[]}`,
+			"no project with slug 'zzz'. project takes the stored slug; resolve it with search_projects first",
+		},
+		"guard with no candidates key": {`{"message":"no data-bearing account named 'x'"}`, "no data-bearing account named 'x'"},
+		"guard with candidates": {
+			`{"message":"pick one of these","candidates":[{"slug":"k8s","name":"Kubernetes"}]}`,
+			"pick one of these:\n[\n  {\n    \"name\": \"Kubernetes\",\n    \"slug\": \"k8s\"\n  }\n]",
+		},
+		"validation list on the body": {
+			`[{"type":"value_error","loc":["body"],"msg":"Value error, since is now start_date."}]`,
+			"since is now start_date.",
+		},
+		"validation list on a field": {
+			`[{"type":"int_parsing","loc":["body","limit"],"msg":"Input should be a valid integer"}]`,
+			"limit: Input should be a valid integer",
+		},
+		"several validation errors": {
+			`[{"loc":["body","limit"],"msg":"Input should be a valid integer"},{"loc":["body","order_by"],"msg":"Input should be a valid list"}]`,
+			"limit: Input should be a valid integer\norder_by: Input should be a valid list",
+		},
+		"number":       {`42`, ""},
+		"empty object": {`{}`, ""},
+		"empty list":   {`[]`, ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := detailText(json.RawMessage(tc.detail)); got != tc.want {
+				t.Errorf("detailText(%s) = %q, want %q", tc.detail, got, tc.want)
+			}
+		})
+	}
+	// An unrenderable detail falls back to the status and the whole body.
+	if got := standardMetricError([]byte(`{"detail":42}`), 400); got != `Error (HTTP 400): {"detail":42}` {
+		t.Errorf("standardMetricError fallback = %q", got)
 	}
 }
 
@@ -453,4 +579,96 @@ func setupFakeLens(t *testing.T, handler http.HandlerFunc) {
 	prev := lensConfig
 	SetLensConfig(&LensConfig{ServiceClient: client})
 	t.Cleanup(func() { lensConfig = prev })
+}
+
+// TestStandardMetricResultRendersCompactRows pins R53's rendering: a breakdown
+// returns every row (no cap, by design), so the rows are encoded compact, one
+// per line, while the scalar members and applied stay pretty. The text must
+// remain valid JSON with every value unchanged.
+func TestStandardMetricResultRendersCompactRows(t *testing.T) {
+	body := []byte(`{"columns":["account","parent_org","current_membership_count"],` +
+		`"data":[{"account":"Acme","parent_org":"Acme","current_membership_count":3},` +
+		`{"account":"Beta","parent_org":null,"current_membership_count":1}],` +
+		`"row_count":2,"applied":{"metric":"memberships","by":"org","truncated":false}}`)
+	res, _, err := standardMetricResult(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := resultText(t, res)
+	var back map[string]any
+	if err := json.Unmarshal([]byte(text), &back); err != nil {
+		t.Fatalf("rendered result is not valid JSON: %v\n%s", err, text)
+	}
+	var want map[string]any
+	_ = json.Unmarshal(body, &want)
+	if !reflect.DeepEqual(back, want) {
+		t.Errorf("rendering changed a value:\n%s", text)
+	}
+	if !strings.Contains(text, `    {"account":"Acme","parent_org":"Acme","current_membership_count":3},`) {
+		t.Errorf("rows are not compact, one per line:\n%s", text)
+	}
+	if !strings.Contains(text, "\"applied\": {\n    \"metric\": \"memberships\"") {
+		t.Errorf("applied is no longer pretty-printed:\n%s", text)
+	}
+	// the edge shapes: data as the only member, and an empty breakdown
+	for _, edge := range []string{`{"data":[{"a":1}]}`, `{"columns":["a"],"data":[],"row_count":0,"applied":{}}`} {
+		res, _, _ := standardMetricResult([]byte(edge))
+		var v map[string]any
+		if err := json.Unmarshal([]byte(resultText(t, res)), &v); err != nil {
+			t.Errorf("edge %s rendered invalid JSON: %v\n%s", edge, err, resultText(t, res))
+		}
+	}
+	// a body without data (an error object) falls back to the plain pretty print
+	res, _, _ = standardMetricResult([]byte(`{"detail":"x"}`))
+	if got := resultText(t, res); got != "{\n  \"detail\": \"x\"\n}" {
+		t.Errorf("fallback rendering changed: %q", got)
+	}
+}
+
+// TestStandardMetrics_LegacyNamesAreRejectedAtTheSchema pins where since,
+// until and as_of are refused: the typed args struct carries none of them, the
+// SDK derives a closed schema from it and validates a call before the handler
+// runs, so a caller gets the SDK's "unexpected additional properties" naming
+// the field. The guidance's Errors section says exactly that (rejected by the
+// request schema); the replacement words are in the description and the
+// contract table, not in a lens message this path never produces.
+func TestStandardMetrics_LegacyNamesAreRejectedAtTheSchema(t *testing.T) {
+	server := mcp.NewServer(&mcp.Implementation{Name: "probe", Version: "0"}, nil)
+	RegisterStandardMetrics(server)
+	ct, st := mcp.NewInMemoryTransports()
+	ss, err := server.Connect(context.Background(), st, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ss.Close()
+	client := mcp.NewClient(&mcp.Implementation{Name: "c", Version: "0"}, nil)
+	cs, err := client.Connect(context.Background(), ct, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cs.Close()
+	for _, legacy := range []string{"since", "until", "as_of"} {
+		res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+			Name:      "query_lfx_standard_metrics",
+			Arguments: map[string]any{"metric": "memberships", legacy: "2024-01-01"},
+		})
+		if err != nil {
+			t.Fatalf("%s: transport error: %v", legacy, err)
+		}
+		if !res.IsError {
+			t.Errorf("%s reached the handler; the schema should have refused it", legacy)
+			continue
+		}
+		if text := resultText(t, res); !strings.Contains(text, legacy) || !strings.Contains(text, "additional properties") {
+			t.Errorf("%s: rejection does not name the field: %q", legacy, text)
+		}
+	}
+	// the replacement words are in the schema a caller reads before calling
+	tool := listRegisteredTool(t, "query_lfx_standard_metrics", RegisterStandardMetrics)
+	schema, _ := json.Marshal(tool.InputSchema)
+	for _, want := range []string{`"start_date"`, `"end_date"`, `"period"`} {
+		if !strings.Contains(string(schema), want) {
+			t.Errorf("input schema does not name %s", want)
+		}
+	}
 }

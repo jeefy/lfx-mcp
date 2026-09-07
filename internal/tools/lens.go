@@ -40,14 +40,11 @@ func RegisterQueryLFXLens(server *mcp.Server) {
 		Name: "query_lfx_lens",
 		Description: `Ask natural language questions about a project's data using ad-hoc SQL generation.
 
-Use this tool ONLY for:
-- Membership counts as of a PAST date or at year end by year ("how many members did CNCF have in 2024"): memberships whose install date is on or before the date and whose churn date is after it. The standard metric memberships is a today-only snapshot.
+Use this tool ONLY as a FALLBACK: switch here only when the semantic layer genuinely cannot express the question - after discovery (list_metrics, get_dimensions, get_dimension_values), the read_lfx_semantic_layer_guidance recipes, and two differently-formulated queries have failed - or when a guidance document routes the question here directly (a cross-domain join; an org breakdown on a standard-metric family that rejects org: one query, as the guidance says). Zero rows or an unknown-name error is a discovery failure, not a reason to switch. Membership counts on any date or by year are the memberships standard metric (start_date/end_date/period), not this tool.
 
-FALLBACK (the only other use): switch here only when the semantic layer genuinely cannot express the question - after discovery (list_metrics, get_dimensions, get_dimension_values), the read_lfx_semantic_layer_guidance recipes, and two differently-formulated queries have failed. Zero rows or an unknown-name error is a discovery failure, not a reason to switch.
+Everything else - contributors, activities, memberships, events and sponsorships, registrations, education, maintainer rosters/counts/names, health, social listening (mentions, sentiment, reach) - is a standard metric first (query_lfx_standard_metrics; inventory in read_lfx_standard_metrics_guidance), then explore_lfx_semantic_layer + query_lfx_semantic_layer when no family fits. Committee/board rosters: the committee tools.
 
-Everything else - contributors, activities, memberships, events and sponsorships, registrations, education, maintainer rosters/counts/names, health, social listening (mentions, sentiment, reach) - belongs to explore_lfx_semantic_layer + query_lfx_semantic_layer. Committee/board rosters: the committee tools.
-
-project_slug is required default context, NOT a scope boundary. Find it via search_projects. For multiple foundations, pass one slug and name the others in input. LF-wide: use project_slug='tlf'.
+project_slug is required default context, NOT a scope boundary. Find it via search_projects. For multiple foundations, pass one slug and name the others in input. project_slug is a required CONTEXT field of this tool only, not a scope: for an LF-wide question pass 'tlf' here and say LF-wide in input. On every other tool the LF-wide scope is NO project at all, and 'tlf' is the Linux Foundation's own bucket, not the LF-wide scope.
 
 Runs synchronously; wait 15-30 seconds without retrying. Returns <=200 rows; request explicit pagination ("page 2", or stable ORDER BY with LIMIT/OFFSET). Windows: default trailing 12 months; state concrete yyyy-mm-dd dates or the SQL picks its own.`,
 		Annotations: &mcp.ToolAnnotations{
@@ -59,8 +56,8 @@ Runs synchronously; wait 15-30 seconds without retrying. Returns <=200 rows; req
 
 // QueryLFXLensArgs defines the input for query_lfx_lens.
 type QueryLFXLensArgs struct {
-	ProjectSlug string `json:"project_slug" jsonschema:"Required default context slug from search_projects, not a scope boundary. For multiple foundations, pass one here and name the others in input; use 'tlf' for LF-wide questions."`
-	Input       string `json:"input" jsonschema:"Natural language question. Use for past-date or by-year membership counts, cross-domain joins and shapes no standard metric expresses; the standard metrics already rank people (top contributors, top maintainers). Contributor, activity, membership, event, education, health and social listening questions belong to the semantic layer and its standard metrics - read read_lfx_semantic_layer_guidance before falling back here. Takes 15-30s. (required)"`
+	ProjectSlug string `json:"project_slug" jsonschema:"Required default context slug from search_projects, not a scope boundary. For multiple foundations, pass one here and name the others in input. A context field of this tool only: for an LF-wide question pass 'tlf' here and say LF-wide in input; on every other tool 'tlf' is the Linux Foundation's own bucket, not the LF-wide scope."`
+	Input       string `json:"input" jsonschema:"Natural language question. Use for cross-domain joins and shapes no standard metric expresses; membership counts on any date or by year are the memberships standard metric, and the standard metrics already rank people (top contributors, top maintainers). Contributor, activity, membership, event, education, health and social listening questions belong to the semantic layer and its standard metrics - read read_lfx_semantic_layer_guidance before falling back here. Takes 15-30s. (required)"`
 }
 
 type lensWorkflowAdditional struct {
@@ -154,24 +151,28 @@ func handleQueryLFXLens(ctx context.Context, req *mcp.CallToolRequest, args Quer
 // not fit belongs in the read_lfx_semantic_layer_guidance tool, whose output
 // is a tool result and carries no limit; both descriptions route the model
 // there before its first query.
-const exploreSemanticLayerDescription = `The LFX Semantic Layer is the query tool for LF data: contributor, contribution, membership, revenue, event, registration, speaker, sponsorship, enrollment, certification, maintainer, health, project and social listening (mentions, sentiment, reach) metrics, sliceable by country or region. This discovers what can be measured; query_lfx_semantic_layer runs it. Start here unless exact names are known.
+const exploreSemanticLayerDescription = `If a standard metric answers the question (inventory: read_lfx_standard_metrics_guidance), call query_lfx_standard_metrics and do not explore first.
 
-If you have not read read_lfx_semantic_layer_guidance yet this session, read it BEFORE using this tool; one read also covers query_lfx_semantic_layer. Common questions: prefer query_lfx_standard_metrics when a standard metric matches.
+The LFX Semantic Layer is the query tool for LF data: contributor, contribution, membership, revenue, event, registration, speaker, sponsorship, enrollment, certification, maintainer, health, project and social listening (mentions, sentiment, reach) metrics, sliceable by country or region. This discovers what can be measured; query_lfx_semantic_layer runs it. Start here unless exact names are known.
+
+If you have not read read_lfx_semantic_layer_guidance yet this session, read it BEFORE using this tool; one read also covers query_lfx_semantic_layer.
 
 ACTIONS
 - list_metrics(search): search by one topic word from the list above
 - get_dimensions(metrics, search): a metric's group_by/filter surface; several metrics return only their shared dimensions
 - get_dimension_values(dimension, metrics, search): stored literals - call before filtering on any unseen value; unknowns return zero rows, not an error ('Asia Pacific' not 'APAC')
 
-Names are entity__field with per-metric prefixes - copy qualified_names, never assemble. Resolve project slugs via search_projects, org legal names via search_b2b_orgs. query_lfx_lens is ONLY for past-date membership counts, cross-domain joins, or guidance-sanctioned fallback. Board/committee/ambassador rosters: committee tools.`
+Names are entity__field with per-metric prefixes - copy qualified_names, never assemble. Resolve project slugs via search_projects, org legal names via search_b2b_orgs. query_lfx_lens is ONLY for cross-domain joins or guidance-sanctioned fallback. Board/committee/ambassador rosters: committee tools.`
 
-const querySemanticLayerDescription = `Run governed LFX Semantic Layer metric queries: contributions, memberships, events, sponsorships, education, maintainers, health, social listening, country/region. ALWAYS explore_lfx_semantic_layer first unless exact names are known; never guess.
+const querySemanticLayerDescription = `If a standard metric answers the question (inventory: read_lfx_standard_metrics_guidance), call query_lfx_standard_metrics and do not explore first.
 
-If you have not read read_lfx_semantic_layer_guidance yet this session, read it BEFORE querying; one read also covers explore. If a query_lfx_standard_metrics recipe matches the question, prefer it.
+Run governed LFX Semantic Layer metric queries: contributions, memberships, events, sponsorships, education, maintainers, health, social listening, country/region. ALWAYS explore_lfx_semantic_layer first unless exact names are known; never guess.
+
+If you have not read read_lfx_semantic_layer_guidance yet this session, read it BEFORE querying; one read also covers explore.
 
 SYNTAX: metrics (required), CSV. group_by: dimension qualified_names copied from explore; add metric_time__year (or __quarter, __month) for trends. where is MetricFlow: {{ Dimension('country__lf_region') }} = 'Europe'; {{ TimeDimension('metric_time','DAY') }} >= '2024-01-01'; dates yyyy-mm-dd. limit optional.
 
-SCOPE lives in where (no project parameter). Foundation: {{ Dimension('project__foundation_slug') }} = '<slug>' (resolve via search_projects); NEVER scope a foundation with project_slug - its catch-all bucket, a silent undercount. Org/account filters take FULL LEGAL names - search_b2b_orgs first.
+SCOPE lives in where (no project parameter). Foundation: {{ Dimension('project__foundation_slug') }} = '<slug>' (resolve via search_projects); NEVER scope a foundation with project_slug - its catch-all bucket, a silent undercount. LF-wide ('the Linux Foundation' as a whole) = no project filter at all; 'tlf' is the LF's own bucket, not the LF-wide scope. Org/account filters take FULL LEGAL names - search_b2b_orgs first.
 
 0 rows = misspelled literal or wrong scope: get_dimension_values, then the guidance recipes, BEFORE any query_lfx_lens fallback. State definition and window with every answer.`
 
