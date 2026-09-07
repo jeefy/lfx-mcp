@@ -395,8 +395,10 @@ func TestStandardMetricsGuidanceContent(t *testing.T) {
 		"an order_by field that is not one of the result columns",
 		"no snapshot on or before end_date",
 		// round 7: the health version sentence stated once, first, in the row and the walkthrough
-		"The count and the categories are v2; the average reads v1 until the lf-dbt DBT-1 deployment lands — except by=population, which reads the v2 average already — and is the v2 health score normalized to a hundred-point scale (raw v2 points over each project's coverage-dependent maximum) from that deployment (week of 2026-09-07) on. v2 score;",
+		"The count and the categories are v2; the average reads v1 until the lf-dbt DBT-1 deployment lands — except by=population, which reads the v2 average already — and is the v2 health score normalized to a hundred-point scale (raw v2 points over each project's coverage-dependent maximum) from that deployment (week of 2026-09-07) on. A scored project without a stored maximum counts in the total but not in the average. v2 score;",
 		"- project_health: The count and the categories are v2; the average reads v1",
+		"A scored project\n  without a stored maximum counts in the total but not in the average.",
+		"on. A scored project without a stored maximum counts in the total but not in the average. v2 score;",
 		"v2 snapshots start on 2026-08-25, so an end_date\n  before that returns",
 		"applied.coverage says how many, out of the\n  LF-hosted projects with a health row on the snapshot day",
 		"The family reports the count of scored projects\n  and their mean score",
