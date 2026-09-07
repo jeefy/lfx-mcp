@@ -41,7 +41,7 @@ Every family takes the same parameters, and nothing per family:
 | org | one stored legal account name from search_b2b_orgs, exact | none |
 | subsidiaries | excluded, separate or combined: what the org name covers | excluded |
 | start_date | yyyy-mm-dd, a UTC calendar day | the family's window (below) |
-| end_date | yyyy-mm-dd, a UTC calendar day | today (UTC) |
+| end_date | yyyy-mm-dd, a UTC calendar day; for "each year since X" or "through now" leave it unset — a future end_date reads the scheduled state on that day and sets includes_future_dated, it is not the to-date row | today (UTC) |
 | period | day, week, month, quarter or year: one row per period | none = one figure |
 | order_by | result columns, - prefix for descending | none |
 | limit | maximum rows; the result says whether it was cut | none = every row |
@@ -118,8 +118,9 @@ roster), project_health and software_value (a daily snapshot).
   or before the day and not ended by it; the applied block's definition
   says so, and it reads a few percent above the status-based current count.
 - "Members at each year end since 2020" → memberships,
-  start_date=2020-01-01, end_date=2025-12-31, period=year: six rows, each
-  the state on 31 December.
+  start_date=2020-01-01, period=year, no end_date: one row per year end,
+  each the state on 31 December, the last one today's state with
+  partial_last_period set.
 - "Maintainers over time" → maintainers, period=year: people on TODAY's
   roster with a code contribution in each year. The roster itself has no
   honest history, so maintainers with an end_date other than today is a
@@ -286,7 +287,10 @@ answer the question or change the conclusion. Then offer the breakdown,
 another window or the series. When unsure whether a note belongs, leave it
 out: the reader can ask. Coverage, snapshot mechanics, version notes and
 thresholds appear only when they qualify THIS figure or the reader is
-contrasting it with another. "How many members does the LF have" →
+contrasting it with another. A flagged row (partial_last_period,
+includes_future_dated) is reported with the applied block's wording, never
+dropped or explained with calendar arithmetic of your own. "How many members
+does the LF have" →
 memberships, no project: the figure, "active memberships across the
 LF-hosted projects today", and the offer of the breakdown by project.
 
@@ -329,6 +333,9 @@ LF-hosted projects today", and the offer of the breakdown by project.
   source record. The enrichment spelling of a company ('Red Hat') is a
   different vocabulary from the CRM account name ('Red Hat LLC'); never mix
   the two in one answer.
+- A series arrives in period order, oldest first; quote each period's figure
+  from its own row and nothing else — a figure that is not in a row does
+  not exist.
 - A window drops rows with no usable timestamp, so an all-time figure can
   exceed the sum of its windows.
 - truncated=true means limit cut rows off: say "top N", not "all".
