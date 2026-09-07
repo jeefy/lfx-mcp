@@ -902,9 +902,11 @@ func TestQueryLFXLensDoesNotClaimMemberships(t *testing.T) {
 			t.Errorf("query_lfx_lens description still claims memberships: %q", unwanted)
 		}
 	}
+	// the handoff is the governed route first, the layer when no family fits
 	if !strings.Contains(tool.Description, "Everything else - contributors, activities, memberships") ||
-		!strings.Contains(tool.Description, "belongs to explore_lfx_semantic_layer") {
-		t.Error("query_lfx_lens description should hand memberships to the semantic layer explicitly")
+		!strings.Contains(tool.Description, "is a standard metric first (query_lfx_standard_metrics") ||
+		!strings.Contains(tool.Description, "then explore_lfx_semantic_layer + query_lfx_semantic_layer when no family fits") {
+		t.Error("query_lfx_lens description should hand memberships to the standard metrics, then the semantic layer, explicitly")
 	}
 
 	input := schemaPropertyDescription(t, tool, "input")

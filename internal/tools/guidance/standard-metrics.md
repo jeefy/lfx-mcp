@@ -53,8 +53,9 @@ when the question is about that bucket, and the result's applied.note says
 so whenever it is passed. A search_projects hit for the foundation's name
 is not a reason to scope.
 
-There is no since, until or as_of: a call that names one is rejected with
-the word to use instead. There is no free-form filter.
+There is no since, until or as_of: a call that names one is rejected by the
+request schema as an unexpected property; the words are start_date and
+end_date. There is no free-form filter.
 
 Answer four questions, then call once.
 
@@ -389,7 +390,6 @@ not retry the same one.
 
 - an unknown metric, or a grouping the family does not offer: the message
   lists the valid names or groupings.
-- since, until or as_of: the message names start_date or end_date.
 - start_date without period on an at-date family; an end_date other than
   today on maintainers without period; period on a family and grouping
   with no series yet.
@@ -399,8 +399,10 @@ not retry the same one.
   search_b2b_orgs; an unknown project slug: 400 with candidates.
 - subsidiaries=separate without by=org, or subprojects=separate without
   by=project: the breakdown needs its grouping; one figure is combined.
-- since, until, as_of, group_by, where: rejected by the request schema
-  before the family sees them; the parameters are the contract table above.
+- since, until, as_of, group_by, where: rejected by the request schema as
+  an unexpected property before the family sees them; the message names only
+  the property you sent, so the replacement is the contract table above
+  (since and until are start_date and end_date; as_of is end_date).
 - org on a family whose model carries no account.
 - an order_by field that is not one of the result columns (the message
   lists them, minus any column the call folds away).

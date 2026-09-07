@@ -279,7 +279,7 @@ func TestStandardMetricsGuidanceContent(t *testing.T) {
 		"| end_date | yyyy-mm-dd, a UTC calendar day; for \"each year since X\" or \"through now\" leave it unset",
 		"| period | day, week, month, quarter or year: one row per period | none = one figure |",
 		"There is no since, until or as_of",
-		"rejected with\nthe word to use instead",
+		"rejected by the\nrequest schema as an unexpected property; the words are start_date and\nend_date",
 		"There is no free-form filter",
 		// the four questions
 		"\"TOP CONTRIBUTORS\" with nothing\n   more said means INDIVIDUALS",
@@ -389,7 +389,7 @@ func TestStandardMetricsGuidanceContent(t *testing.T) {
 		// errors
 		"## Errors",
 		"read it and change the call, do\nnot retry the same one",
-		"since, until or as_of: the message names start_date or end_date",
+		"the message names only\n  the property you sent, so the replacement is the contract table above",
 		"an org that matches no data-bearing account: 400 with candidates",
 		"an unknown project slug: 400 with candidates",
 		"an order_by field that is not one of the result columns",
