@@ -45,7 +45,7 @@ Use this tool ONLY as a FALLBACK: switch here only when the semantic layer genui
 
 Everything else - contributors, activities, memberships, events and sponsorships, registrations, education, maintainer rosters/counts/names, health, social listening (mentions, sentiment, reach) - is a standard metric first (query_lfx_standard_metrics; inventory in read_lfx_standard_metrics_guidance), then explore_lfx_semantic_layer + query_lfx_semantic_layer when no family fits. Committee/board rosters: the committee tools.
 
-project_slugs is optional. Omit it for LF-wide questions: no project or foundation filter is applied. Pass exact slugs from search_projects to scope to them; several slugs are combined, so a JDF series plus its -fund parent, or a multi-foundation comparison, is one call. Unknown slugs are rejected. Every answer opens with the scope it ran with.
+project_slugs is optional. Omit it for LF-wide questions: no project or foundation filter is applied. Pass exact slugs from search_projects to scope to them; several slugs are combined, so a JDF series plus its -fund parent, or a multi-foundation comparison, is one call. Unknown slugs are rejected. Every answer opens with the scope the caller gave.
 
 Runs synchronously; wait 15-30 seconds without retrying. Returns <=200 rows; request explicit pagination ("page 2", or stable ORDER BY with LIMIT/OFFSET). Windows: default trailing 12 months; state concrete yyyy-mm-dd dates or the SQL picks its own.`,
 		Annotations: &mcp.ToolAnnotations{
@@ -201,9 +201,20 @@ func isLensRejection(content string) bool {
 // with control characters is an argument error; the offending value is not
 // echoed.
 func normalizeSlugs(slugs []string) ([]string, error) {
+	// Bound the raw caller list before iteration or de-duplication: a huge
+	// list of one repeated slug is still huge input and must not bypass the cap.
+	if len(slugs) > maxLensProjectSlugs {
+		return nil, fmt.Errorf("project_slugs: more than %d entries (%d given)", maxLensProjectSlugs, len(slugs))
+	}
+
 	out := make([]string, 0, len(slugs))
 	seen := make(map[string]struct{}, len(slugs))
 	for _, s := range slugs {
+		// Check before TrimSpace: a trailing newline is a control character,
+		// not harmless whitespace that should become a valid stored slug.
+		if strings.ContainsFunc(s, unicode.IsControl) {
+			return nil, fmt.Errorf("project_slugs: a slug contains control characters")
+		}
 		s = strings.TrimSpace(s)
 		if s == "" {
 			continue
@@ -211,17 +222,11 @@ func normalizeSlugs(slugs []string) ([]string, error) {
 		if len(s) > maxLensSlugLength {
 			return nil, fmt.Errorf("project_slugs: a slug exceeds %d bytes", maxLensSlugLength)
 		}
-		if strings.ContainsFunc(s, unicode.IsControl) {
-			return nil, fmt.Errorf("project_slugs: a slug contains control characters")
-		}
 		if _, dup := seen[s]; dup {
 			continue
 		}
 		seen[s] = struct{}{}
 		out = append(out, s)
-	}
-	if len(out) > maxLensProjectSlugs {
-		return nil, fmt.Errorf("project_slugs: at most %d slugs per call (%d given)", maxLensProjectSlugs, len(out))
 	}
 	return out, nil
 }

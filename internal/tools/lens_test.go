@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -482,16 +483,24 @@ func TestLayerToolsRouteToTheStandardMetricsFirst(t *testing.T) {
 // TestEveryClientTextSaysTlfIsNotTheLFWideScope pins R44: the foundation's own
 // slug is a bucket, and every tool that hands it over or accepts it says so in
 // the same words, so a client never adds tlf when the question is LF-wide.
-// query_lfx_lens is the one tool whose project_slug is required: tlf goes
-// there as context and the LF-wide scope is said in the input; no client text
-// may read as "tlf gives LF-wide".
+// query_lfx_lens no longer needs the exception R44 gave its required
+// project_slug: its optional project_slugs list represents LF-wide as []. Its
+// description and schema therefore must not mention tlf at all.
 func TestEveryClientTextSaysTlfIsNotTheLFWideScope(t *testing.T) {
+	lens := listRegisteredTool(t, "query_lfx_lens", RegisterQueryLFXLens)
+	lensSchema, err := json.Marshal(lens.InputSchema)
+	if err != nil {
+		t.Fatalf("query_lfx_lens: marshal schema: %v", err)
+	}
+	if strings.Contains(strings.ToLower(lens.Description+string(lensSchema)), "tlf") {
+		t.Error("query_lfx_lens still mentions tlf instead of representing LF-wide as []")
+	}
+
 	const phrase = "not the LF-wide scope"
 	for _, tc := range []struct {
 		name     string
 		register func(*mcp.Server)
 	}{
-		{"query_lfx_lens", RegisterQueryLFXLens},
 		{"query_lfx_semantic_layer", RegisterQuerySemanticLayer},
 		{"query_lfx_standard_metrics", RegisterStandardMetrics},
 		{"search_projects", RegisterSearchProjects},
@@ -935,7 +944,7 @@ func TestQueryLFXLensScopeIsOptionalAndExplicit(t *testing.T) {
 		"no project or foundation filter",
 		"several slugs are combined",
 		"Unknown slugs are rejected",
-		"Every answer opens with the scope it ran with",
+		"Every answer opens with the scope the caller gave",
 		// Lens generates its own SQL and picks arbitrary windows when the
 		// question leaves them open — the description must carry the default
 		// window convention and require concrete dates in the question.
@@ -1127,10 +1136,12 @@ func TestQueryLFXLensRejectsOversizedSlugLists(t *testing.T) {
 		tooMany = append(tooMany, fmt.Sprintf("slug-%d", i))
 	}
 	cases := map[string][]string{
-		"too many":      tooMany,
-		"too long":      {strings.Repeat("x", maxLensSlugLength+1)},
-		"control chars": {"cncf\nDROP"},
-		"tab in slug":   {"cn\tcf"},
+		"too many":         tooMany,
+		"duplicate flood":  slices.Repeat([]string{"cncf"}, maxLensProjectSlugs+1),
+		"too long":         {strings.Repeat("x", maxLensSlugLength+1)},
+		"control chars":    {"cncf\nDROP"},
+		"trailing newline": {"cncf\n"},
+		"tab in slug":      {"cn\tcf"},
 	}
 	for name, slugs := range cases {
 		_, _, err := handleQueryLFXLens(context.Background(), &mcp.CallToolRequest{}, QueryLFXLensArgs{
@@ -1148,9 +1159,9 @@ func TestQueryLFXLensRejectsOversizedSlugLists(t *testing.T) {
 		}
 	}
 
-	// exactly the cap, with duplicates that collapse under it, is fine
-	atCap := make([]string, 0, maxLensProjectSlugs+2)
-	for i := 0; i < maxLensProjectSlugs; i++ {
+	// Exactly the raw cap is fine; de-duplication still preserves first order.
+	atCap := make([]string, 0, maxLensProjectSlugs)
+	for i := 0; i < maxLensProjectSlugs-2; i++ {
 		atCap = append(atCap, fmt.Sprintf("slug-%d", i))
 	}
 	atCap = append(atCap, "slug-0", " slug-1 ")
@@ -1164,7 +1175,7 @@ func TestQueryLFXLensRejectsOversizedSlugLists(t *testing.T) {
 
 // A normal completed answer, scope line and all, is not an error.
 func TestQueryLFXLensCompletedAnswerIsNotAnError(t *testing.T) {
-	const answer = "**scope**: LF-wide — no project filter applied.\n\n### Countries\n| N |\n| --- |\n| 140 |"
+	const answer = "**scope**: LF-wide — no project filter from the caller; a project named in the question is filtered as asked (see compiled_sql).\n\n### Countries\n| N |\n| --- |\n| 140 |"
 	setupLensTestResponding(t, `{"content":`+strconv.Quote(answer)+`,"status":"COMPLETED","session_id":"s"}`)
 
 	res, _, err := handleQueryLFXLens(context.Background(), &mcp.CallToolRequest{}, QueryLFXLensArgs{
