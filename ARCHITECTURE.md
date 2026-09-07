@@ -226,7 +226,7 @@ sequenceDiagram
     MCP->>Lens: POST /workflows/.../runs<br />additional_data {"project_slugs": [...]}<br />Authorization: Bearer {lens_m2m_token}
     Lens->>Lens: verify JWT via JWKS
     Lens->>Lens: resolve slugs (unknown -> rejection, no query)
-    Lens-->>MCP: response (opens with **scope**, ends with **snapshot**)
+    Lens-->>MCP: response (opens with **scope**)
     MCP-->>Client: tool result (rejection -> IsError)
 ```
 
