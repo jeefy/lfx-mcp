@@ -531,6 +531,32 @@ func TestEveryClientTextSaysTlfIsNotTheLFWideScope(t *testing.T) {
 	}
 }
 
+// Project discovery must not send Lens callers back to the removed mandatory
+// slug contract, even while the query tool itself advertises the new schema.
+func TestSearchProjectsIncludesLensInOptionalScopeContract(t *testing.T) {
+	tool := listRegisteredTool(t, "search_projects", RegisterSearchProjects)
+	for _, want := range []string{
+		"LF-wide questions take no project on the query tools",
+		"query_lfx_lens included (omit project_slugs)",
+		"pass project_slugs only to restrict to named projects",
+	} {
+		if !strings.Contains(tool.Description, want) {
+			t.Errorf("search_projects description missing %q", want)
+		}
+	}
+	for _, banned := range []string{
+		"query_lfx_lens is the exception", "project_slug is required",
+		"pass tlf there", "required context",
+	} {
+		if strings.Contains(strings.ToLower(tool.Description), banned) {
+			t.Errorf("search_projects still teaches the removed Lens scope contract: %q", banned)
+		}
+	}
+	if len(tool.Description) > 2048 {
+		t.Errorf("search_projects description exceeds 2048 bytes: %d", len(tool.Description))
+	}
+}
+
 func TestNoToolCallsMembershipsATodayOnlySnapshot(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
