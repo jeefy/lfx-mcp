@@ -474,8 +474,9 @@ func TestLayerToolsRouteToTheStandardMetricsFirst(t *testing.T) {
 // TestEveryClientTextSaysTlfIsNotTheLFWideScope pins R44: the foundation's own
 // slug is a bucket, and every tool that hands it over or accepts it says so in
 // the same words, so a client never adds tlf when the question is LF-wide.
-// query_lfx_lens is the one tool whose project_slug is a context field and
-// takes tlf for LF-wide; its text says that, and says the other tools do not.
+// query_lfx_lens is the one tool whose project_slug is required: tlf goes
+// there as context and the LF-wide scope is said in the input; no client text
+// may read as "tlf gives LF-wide".
 func TestEveryClientTextSaysTlfIsNotTheLFWideScope(t *testing.T) {
 	const phrase = "not the LF-wide scope"
 	for _, tc := range []struct {
@@ -496,7 +497,9 @@ func TestEveryClientTextSaysTlfIsNotTheLFWideScope(t *testing.T) {
 		if !strings.Contains(text, phrase) {
 			t.Errorf("%s does not say %q", tc.name, phrase)
 		}
-		for _, banned := range []string{"use project_slug='tlf'", "use 'tlf' for LF-wide"} {
+		for _, banned := range []string{
+			"use project_slug='tlf'", "use 'tlf' for LF-wide", "tlf for LF-wide", "takes tlf for LF-wide",
+		} {
 			if strings.Contains(text, banned) {
 				t.Errorf("%s still says %q", tc.name, banned)
 			}
