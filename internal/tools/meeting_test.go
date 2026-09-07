@@ -31,8 +31,8 @@ func TestMeetingToolsClaimMeetingQuestions(t *testing.T) {
 			register: func(s *mcp.Server) { RegisterSearchMeetings(s, false) },
 			wants: []string{
 				"live HERE - prefer these tools over the semantic layer or query_lfx_lens",
-				// The opposite-direction redirect for event data must survive.
-				"read read_lfx_standard_metrics_guidance and use query_lfx_standard_metrics",
+				// The opposite-direction redirect applies only when available.
+				"when query_lfx_standard_metrics is available to you, read read_lfx_standard_metrics_guidance and use it",
 			},
 		},
 		{
@@ -40,7 +40,7 @@ func TestMeetingToolsClaimMeetingQuestions(t *testing.T) {
 			register: func(s *mcp.Server) { RegisterSearchMeetings(s, true) },
 			wants: []string{
 				"live HERE - prefer these tools over the semantic layer or query_lfx_lens",
-				"read read_lfx_standard_metrics_guidance and use query_lfx_standard_metrics",
+				"when query_lfx_standard_metrics is available to you, read read_lfx_standard_metrics_guidance and use it",
 			},
 		},
 		{

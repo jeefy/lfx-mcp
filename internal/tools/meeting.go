@@ -58,7 +58,7 @@ func RegisterSearchMeetings(server *mcp.Server, asGroups bool) {
 	if asGroups {
 		mcp.AddTool(server, &mcp.Tool{
 			Name:        "search_meetings",
-			Description: "Search for LFX meetings (group calls, also called committee calls, working group sessions) using the query service. Meetings, their occurrences, registrants, attendance and summaries live HERE - prefer these tools over the semantic layer or query_lfx_lens for meeting questions. Events (conferences, registrations, attendees, speakers, sponsorships) are standard metrics: read read_lfx_standard_metrics_guidance and use query_lfx_standard_metrics.",
+			Description: "Search for LFX meetings (group calls, also called committee calls, working group sessions) using the query service. Meetings, their occurrences, registrants, attendance and summaries live HERE - prefer these tools over the semantic layer or query_lfx_lens for meeting questions. Events (conferences, registrations, attendees, speakers, sponsorships) are standard metrics: when query_lfx_standard_metrics is available to you, read read_lfx_standard_metrics_guidance and use it.",
 			Annotations: &mcp.ToolAnnotations{
 				Title:        "Search Meetings",
 				ReadOnlyHint: true,
@@ -68,7 +68,7 @@ func RegisterSearchMeetings(server *mcp.Server, asGroups bool) {
 	}
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "search_meetings",
-		Description: "Search for LFX meetings (committee calls, working group sessions) using the query service. Meetings, their occurrences, registrants, attendance and summaries live HERE - prefer these tools over the semantic layer or query_lfx_lens for meeting questions. Events (conferences, registrations, attendees, speakers, sponsorships) are standard metrics: read read_lfx_standard_metrics_guidance and use query_lfx_standard_metrics.",
+		Description: "Search for LFX meetings (committee calls, working group sessions) using the query service. Meetings, their occurrences, registrants, attendance and summaries live HERE - prefer these tools over the semantic layer or query_lfx_lens for meeting questions. Events (conferences, registrations, attendees, speakers, sponsorships) are standard metrics: when query_lfx_standard_metrics is available to you, read read_lfx_standard_metrics_guidance and use it.",
 		Annotations: &mcp.ToolAnnotations{
 			Title:        "Search Meetings",
 			ReadOnlyHint: true,

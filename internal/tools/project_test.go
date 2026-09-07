@@ -199,9 +199,20 @@ func TestSearchProjectsDescriptionMentionsEachNewParameter(t *testing.T) {
 			t.Errorf("description missing %q", want)
 		}
 	}
-	for _, banned := range []string{"Insights", "Jim", "eleven", "because"} {
+	for _, banned := range []string{"Insights", "Jim", "eleven"} {
 		if strings.Contains(tool.Description, banned) {
 			t.Errorf("description must not contain %q", banned)
 		}
+	}
+
+	// Keep the main-branch scope contract verbatim. Its approved "because"
+	// explains the required Lens parameter; the rationale ban applies to
+	// TOOLS-1's parameter text, not to this inherited contract sentence.
+	const scopeContract = " The Linux Foundation's own entry (slug tlf) is one project bucket, not the LF-wide scope: LF-wide questions take no project on the query tools; query_lfx_lens is the exception only because its project_slug is required — pass tlf there as context and say LF-wide in the input; the lens reads the scope from the input, not from the slug."
+	if !strings.HasSuffix(tool.Description, scopeContract) {
+		t.Error("description must retain the main-branch LF-wide/tlf contract verbatim")
+	}
+	if strings.Contains(strings.TrimSuffix(tool.Description, scopeContract), "because") {
+		t.Error("TOOLS-1 parameter description must not contain rationale")
 	}
 }

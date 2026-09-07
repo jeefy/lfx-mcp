@@ -287,7 +287,7 @@ func TestOrgSeats_DescriptionBudgetAndContent(t *testing.T) {
 	if n := len(tool.Description); n > 1000 {
 		t.Errorf("description is %d bytes, keep it under 1000", n)
 	}
-	for _, want := range []string{"search_b2b_orgs", "foundation_uid", "category", "organization grant", "include_seats", "Board & Committee", "direct child projects, as LFX Self Serve scopes it"} {
+	for _, want := range []string{"search_b2b_orgs", "foundation_uid", "category", "organization grant", "include_seats", "Board & Committee", "direct child projects as visible to the caller", "the way LFX Self Serve scopes it", "an organization grant does not make project discovery exhaustive"} {
 		if !strings.Contains(tool.Description, want) {
 			t.Errorf("description missing %q", want)
 		}
