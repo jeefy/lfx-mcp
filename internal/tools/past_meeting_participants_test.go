@@ -706,7 +706,7 @@ func TestTools1_MissingTokenFailsClosed(t *testing.T) {
 		t.Error("projects: must fail closed without a token")
 	}
 	sAPI := setupOrgSeatsTest(t)
-	if res, _, _ := handleGetOrgCommitteeSeats(context.Background(), req, GetOrgCommitteeSeatsArgs{OrgUID: testSFID}); !res.IsError || len(sAPI.Requests()) != 0 {
+	if res, _, _ := handleGetOrgCommitteeSeats(context.Background(), req, GetOrgCommitteeSeatsArgs{B2bOrgUID: testSFID}); !res.IsError || len(sAPI.Requests()) != 0 {
 		t.Error("org seats: must fail closed without a token")
 	}
 }

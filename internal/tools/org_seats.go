@@ -59,7 +59,7 @@ func SetOrgSeatsConfig(cfg *OrgSeatsConfig) {
 
 // GetOrgCommitteeSeatsArgs defines the input parameters for the get_org_committee_seats tool.
 type GetOrgCommitteeSeatsArgs struct {
-	OrgUID        string `json:"org_uid" jsonschema:"(required) Organization SFID, 18 characters, from search_b2b_orgs"`
+	B2bOrgUID     string `json:"b2b_org_uid" jsonschema:"(required) B2B organization UID: the 18-character SFID from search_b2b_orgs (the same identifier search_members calls b2b_org_uid)"`
 	FoundationUID string `json:"foundation_uid,omitempty" jsonschema:"Scope seats to one membership foundation (its root project and every descendant). Omit for the organization's seats across all projects"`
 	Category      string `json:"category,omitempty" jsonschema:"Exact committee category to keep, e.g. Board, Technical, Marketing; matched case-insensitively"`
 	IncludeSeats  bool   `json:"include_seats,omitempty" jsonschema:"Return the seat rows as well as the summary (default false: summary only)"`
@@ -115,7 +115,7 @@ func seatFromService(in *committeeservice.OrgCommitteeSeat) orgCommitteeSeat {
 
 // orgSeatsSummary is the output of get_org_committee_seats.
 type orgSeatsSummary struct {
-	OrgUID               string             `json:"org_uid"`
+	B2bOrgUID            string             `json:"b2b_org_uid"`
 	FoundationUID        string             `json:"foundation_uid,omitempty"`
 	ProjectUIDsInScope   int                `json:"project_uids_in_scope,omitempty"`
 	Category             string             `json:"category,omitempty"`
@@ -138,7 +138,7 @@ func RegisterGetOrgCommitteeSeats(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "get_org_committee_seats",
 		Description: "Summarise an organization's committee seats as LFX Self Serve's Org Lens Board & Committee tab shows them. " +
-			"org_uid is the 18-character SFID from search_b2b_orgs. Scope is one membership foundation (foundation_uid: its root project and every descendant) or, when omitted, the organization's seats across all projects. " +
+			"b2b_org_uid is the 18-character SFID from search_b2b_orgs. Scope is one membership foundation (foundation_uid: its root project and every descendant) or, when omitted, the organization's seats across all projects. " +
 			"Returns seats_total, people (distinct e-mails), board_seats vs committee_seats, by_category, by_project, by_role, editable vs foundation_controlled; include_seats adds the rows (name, e-mail, role, voting status, appointed_by, committee, project). " +
 			"category keeps one committee category, matched case-insensitively. The caller needs the organization grant (auditor or writer) LFX Self Serve requires; the result is complete for the scope, never truncated.",
 		Annotations: &mcp.ToolAnnotations{
@@ -312,8 +312,8 @@ func handleGetOrgCommitteeSeats(ctx context.Context, req *mcp.CallToolRequest, a
 		return errorResult("Error: org seats tool not configured"), nil, nil
 	}
 
-	if !sfidPattern.MatchString(args.OrgUID) {
-		return errorResult("Error: org_uid must be the organization's 18-character SFID; resolve it with search_b2b_orgs"), nil, nil
+	if !sfidPattern.MatchString(args.B2bOrgUID) {
+		return errorResult("Error: b2b_org_uid must be the organization's 18-character SFID; resolve it with search_b2b_orgs"), nil, nil
 	}
 
 	mcpToken, err := lfxv2.ExtractMCPToken(req.Extra.TokenInfo)
@@ -324,7 +324,7 @@ func handleGetOrgCommitteeSeats(ctx context.Context, req *mcp.CallToolRequest, a
 	ctx = orgSeatsConfig.Clients.WithMCPToken(ctx, mcpToken)
 	clients := orgSeatsConfig.Clients
 
-	logger.InfoContext(ctx, "fetching org committee seats", "org_uid", args.OrgUID, "foundation_uid", args.FoundationUID, "category", args.Category, "include_seats", args.IncludeSeats)
+	logger.InfoContext(ctx, "fetching org committee seats", "b2b_org_uid", args.B2bOrgUID, "foundation_uid", args.FoundationUID, "category", args.Category, "include_seats", args.IncludeSeats)
 
 	var projectUIDs []string
 	if args.FoundationUID != "" {
@@ -335,7 +335,7 @@ func handleGetOrgCommitteeSeats(ctx context.Context, req *mcp.CallToolRequest, a
 		}
 	}
 
-	seats, err := drainOrgSeats(ctx, clients, args.OrgUID, projectUIDs)
+	seats, err := drainOrgSeats(ctx, clients, args.B2bOrgUID, projectUIDs)
 	if err != nil {
 		logger.ErrorContext(ctx, "org seats fetch failed", "error", err)
 		// Heimdall answers 403 when the caller lacks the b2b_org auditor grant;
@@ -347,13 +347,13 @@ func handleGetOrgCommitteeSeats(ctx context.Context, req *mcp.CallToolRequest, a
 	}
 
 	out := summariseOrgSeats(seats, args.Category)
-	out.OrgUID = args.OrgUID
+	out.B2bOrgUID = args.B2bOrgUID
 	out.FoundationUID = args.FoundationUID
 	out.ProjectUIDsInScope = len(projectUIDs)
 	if !args.IncludeSeats {
 		out.Seats = nil
 	}
 
-	logger.InfoContext(ctx, "get_org_committee_seats succeeded", "org_uid", args.OrgUID, "seats_total", out.SeatsTotal, "people", out.People)
+	logger.InfoContext(ctx, "get_org_committee_seats succeeded", "b2b_org_uid", args.B2bOrgUID, "seats_total", out.SeatsTotal, "people", out.People)
 	return jsonResult(ctx, logger, "get_org_committee_seats formatted", out)
 }

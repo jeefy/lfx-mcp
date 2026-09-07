@@ -100,9 +100,9 @@ func setupOrgSeatsTest(t *testing.T) *stubLFXAPI {
 func TestOrgSeats_RejectsBadSFID(t *testing.T) {
 	api := setupOrgSeatsTest(t)
 	for _, bad := range []string{"", "001B000000IqhSLIA", "001B000000IqhSLIAZ1", "001B000000IqhSLIA-"} {
-		res, _, _ := handleGetOrgCommitteeSeats(context.Background(), stubCallToolRequest(), GetOrgCommitteeSeatsArgs{OrgUID: bad})
+		res, _, _ := handleGetOrgCommitteeSeats(context.Background(), stubCallToolRequest(), GetOrgCommitteeSeatsArgs{B2bOrgUID: bad})
 		if !res.IsError || !strings.Contains(allResultText(t, res), "search_b2b_orgs") {
-			t.Errorf("org_uid %q must be rejected with a pointer to search_b2b_orgs, got %q", bad, allResultText(t, res))
+			t.Errorf("b2b_org_uid %q must be rejected with a pointer to search_b2b_orgs, got %q", bad, allResultText(t, res))
 		}
 	}
 	if len(api.Requests()) != 0 {
@@ -114,7 +114,7 @@ func TestOrgSeats_SummaryArithmetic(t *testing.T) {
 	api := setupOrgSeatsTest(t)
 	api.Respond(seatsPath, seatsPage(tenSeatsFixture(), ""))
 
-	res, _, _ := handleGetOrgCommitteeSeats(context.Background(), stubCallToolRequest(), GetOrgCommitteeSeatsArgs{OrgUID: testSFID})
+	res, _, _ := handleGetOrgCommitteeSeats(context.Background(), stubCallToolRequest(), GetOrgCommitteeSeatsArgs{B2bOrgUID: testSFID})
 	if res.IsError {
 		t.Fatalf("unexpected error: %s", allResultText(t, res))
 	}
@@ -160,7 +160,7 @@ func TestOrgSeats_IncludeSeatsAndCategoryFilter(t *testing.T) {
 	api := setupOrgSeatsTest(t)
 	api.Respond(seatsPath, seatsPage(tenSeatsFixture(), ""))
 
-	res, _, _ := handleGetOrgCommitteeSeats(context.Background(), stubCallToolRequest(), GetOrgCommitteeSeatsArgs{OrgUID: testSFID, Category: "bOaRd", IncludeSeats: true})
+	res, _, _ := handleGetOrgCommitteeSeats(context.Background(), stubCallToolRequest(), GetOrgCommitteeSeatsArgs{B2bOrgUID: testSFID, Category: "bOaRd", IncludeSeats: true})
 	out := resultJSON(t, res)
 	if out["seats_total"] != float64(5) || out["board_seats"] != float64(5) || out["committee_seats"] != float64(0) {
 		t.Errorf("category=Board must keep the five board seats (incl. 'board '), got %v", out)
@@ -190,7 +190,7 @@ func TestOrgSeats_FoundationFamilyResolution(t *testing.T) {
 	api.Respond(resourcesPath, page([]string{projectDoc("p-env", "envoy", "Envoy", "p-cncf", "")}, ""))
 	api.Respond(seatsPath, seatsPage(tenSeatsFixture()[:3], ""))
 
-	res, _, _ := handleGetOrgCommitteeSeats(context.Background(), stubCallToolRequest(), GetOrgCommitteeSeatsArgs{OrgUID: testSFID, FoundationUID: "p-cncf"})
+	res, _, _ := handleGetOrgCommitteeSeats(context.Background(), stubCallToolRequest(), GetOrgCommitteeSeatsArgs{B2bOrgUID: testSFID, FoundationUID: "p-cncf"})
 	if res.IsError {
 		t.Fatalf("unexpected error: %s", allResultText(t, res))
 	}
@@ -212,7 +212,7 @@ func TestOrgSeats_FoundationFamilyResolution(t *testing.T) {
 func TestOrgSeats_FamilyResolutionFailureFailsClosed(t *testing.T) {
 	api := setupOrgSeatsTest(t)
 	api.RespondStatus(resourcesPath, http.StatusInternalServerError, `{"message":"boom"}`)
-	res, _, _ := handleGetOrgCommitteeSeats(context.Background(), stubCallToolRequest(), GetOrgCommitteeSeatsArgs{OrgUID: testSFID, FoundationUID: "p-cncf"})
+	res, _, _ := handleGetOrgCommitteeSeats(context.Background(), stubCallToolRequest(), GetOrgCommitteeSeatsArgs{B2bOrgUID: testSFID, FoundationUID: "p-cncf"})
 	if !res.IsError {
 		t.Fatal("a failed family lookup must not fall back to the root alone")
 	}
@@ -228,7 +228,7 @@ func TestOrgSeats_DrainsPagesAndErrorsAtCap(t *testing.T) {
 	api.Respond(seatsPath, seatsPage(fx[:4], "t1"))
 	api.Respond(seatsPath, seatsPage(fx[4:8], "t2"))
 	api.Respond(seatsPath, seatsPage(fx[8:], ""))
-	res, _, _ := handleGetOrgCommitteeSeats(context.Background(), stubCallToolRequest(), GetOrgCommitteeSeatsArgs{OrgUID: testSFID})
+	res, _, _ := handleGetOrgCommitteeSeats(context.Background(), stubCallToolRequest(), GetOrgCommitteeSeatsArgs{B2bOrgUID: testSFID})
 	if out := resultJSON(t, res); out["seats_total"] != float64(10) {
 		t.Errorf("drain must collect every page, got %v", out["seats_total"])
 	}
@@ -242,7 +242,7 @@ func TestOrgSeats_DrainsPagesAndErrorsAtCap(t *testing.T) {
 	for i := 0; i < orgSeatsMaxPages+5; i++ {
 		api2.Respond(seatsPath, seatsPage(fx[:1], fmt.Sprintf("t%d", i)))
 	}
-	res2, _, _ := handleGetOrgCommitteeSeats(context.Background(), stubCallToolRequest(), GetOrgCommitteeSeatsArgs{OrgUID: testSFID})
+	res2, _, _ := handleGetOrgCommitteeSeats(context.Background(), stubCallToolRequest(), GetOrgCommitteeSeatsArgs{B2bOrgUID: testSFID})
 	if !res2.IsError || !strings.Contains(allResultText(t, res2), "foundation_uid") {
 		t.Errorf("cap must produce an error pointing at foundation_uid, got %q", allResultText(t, res2))
 	}
@@ -254,7 +254,7 @@ func TestOrgSeats_DrainsPagesAndErrorsAtCap(t *testing.T) {
 func TestOrgSeats_ForbiddenMapsToOrgGrantMessage(t *testing.T) {
 	api := setupOrgSeatsTest(t)
 	api.RespondStatus(seatsPath, http.StatusForbidden, `{"message":"forbidden"}`)
-	res, _, _ := handleGetOrgCommitteeSeats(context.Background(), stubCallToolRequest(), GetOrgCommitteeSeatsArgs{OrgUID: testSFID})
+	res, _, _ := handleGetOrgCommitteeSeats(context.Background(), stubCallToolRequest(), GetOrgCommitteeSeatsArgs{B2bOrgUID: testSFID})
 	if !res.IsError {
 		t.Fatal("expected an error result")
 	}
@@ -271,7 +271,7 @@ func TestOrgSeats_OtherErrorsAreFriendly(t *testing.T) {
 	api := setupOrgSeatsTest(t)
 	api.RespondStatus(seatsPath, http.StatusNotFound, `{"message":"org not found"}`)
 	// Goa's default branch wraps unknown statuses as "invalid response code N".
-	res, _, _ := handleGetOrgCommitteeSeats(context.Background(), stubCallToolRequest(), GetOrgCommitteeSeatsArgs{OrgUID: testSFID})
+	res, _, _ := handleGetOrgCommitteeSeats(context.Background(), stubCallToolRequest(), GetOrgCommitteeSeatsArgs{B2bOrgUID: testSFID})
 	if !res.IsError || !strings.Contains(allResultText(t, res), "404") {
 		t.Errorf("404 must pass through friendlyAPIError, got %q", allResultText(t, res))
 	}
@@ -302,7 +302,7 @@ func TestOrgSeats_FamilyResolutionIsCapped(t *testing.T) {
 	for i := 0; i < participantMaxDrainPages+5; i++ {
 		api.Respond(resourcesPath, page(nil, fmt.Sprintf("t%d", i)))
 	}
-	res, _, _ := handleGetOrgCommitteeSeats(context.Background(), stubCallToolRequest(), GetOrgCommitteeSeatsArgs{OrgUID: testSFID, FoundationUID: "p"})
+	res, _, _ := handleGetOrgCommitteeSeats(context.Background(), stubCallToolRequest(), GetOrgCommitteeSeatsArgs{B2bOrgUID: testSFID, FoundationUID: "p"})
 	if !res.IsError || !strings.Contains(allResultText(t, res), "page cap") {
 		t.Errorf("expected a page-cap error, got %q", allResultText(t, res))
 	}
@@ -318,7 +318,7 @@ func TestOrgSeats_ByProjectFallbacksAndRowOrder(t *testing.T) {
 	noSlug := strings.Replace(seatDoc("s20", "c-x", "Zed Committee", "Technical", "p-only-uid", "", "Bea", "Same", "bea@x.org", "None", true), `"project_slug": "",`, "", 1)
 	noProject := strings.Replace(strings.Replace(seatDoc("s21", "c-x", "Zed Committee", "Technical", "p-none", "", "Abe", "Same", "abe@x.org", "None", true), `"project_slug": "",`, "", 1), fmt.Sprintf(`"project_uid": %q,`, uuidFor("p-none")), "", 1)
 	api.Respond(seatsPath, seatsPage([]string{noSlug, noProject}, ""))
-	res, _, _ := handleGetOrgCommitteeSeats(context.Background(), stubCallToolRequest(), GetOrgCommitteeSeatsArgs{OrgUID: testSFID, IncludeSeats: true})
+	res, _, _ := handleGetOrgCommitteeSeats(context.Background(), stubCallToolRequest(), GetOrgCommitteeSeatsArgs{B2bOrgUID: testSFID, IncludeSeats: true})
 	if res.IsError {
 		t.Fatalf("unexpected error: %s", allResultText(t, res))
 	}
@@ -346,7 +346,7 @@ func TestOrgSeats_UpstreamErrorsAreNeverBlank(t *testing.T) {
 	} {
 		api := setupOrgSeatsTest(t)
 		api.RespondStatus(seatsPath, tc.status, tc.body)
-		res, _, _ := handleGetOrgCommitteeSeats(context.Background(), stubCallToolRequest(), GetOrgCommitteeSeatsArgs{OrgUID: testSFID})
+		res, _, _ := handleGetOrgCommitteeSeats(context.Background(), stubCallToolRequest(), GetOrgCommitteeSeatsArgs{B2bOrgUID: testSFID})
 		text := allResultText(t, res)
 		if !res.IsError || strings.TrimSpace(strings.TrimPrefix(text, "Failed to get organization committee seats:")) == "" {
 			t.Errorf("%d: blank error text: %q", tc.status, text)
