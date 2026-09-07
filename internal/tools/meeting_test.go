@@ -17,7 +17,9 @@ import (
 // terminology modes - otherwise a meeting question bounces between tools
 // that each disclaim it. The existing events redirect (meetings tool ->
 // semantic layer for conferences/registrations) must survive alongside the
-// ownership claim: the two route in opposite directions on purpose.
+// ownership claim: the two route in opposite directions on purpose. Events
+// are standard metrics, so the redirect names the served standard-metrics
+// tools, not unserved semantic-layer discovery actions.
 func TestMeetingToolsClaimMeetingQuestions(t *testing.T) {
 	for _, tc := range []struct {
 		toolName string
@@ -30,7 +32,7 @@ func TestMeetingToolsClaimMeetingQuestions(t *testing.T) {
 			wants: []string{
 				"live HERE - prefer these tools over the semantic layer or query_lfx_lens",
 				// The opposite-direction redirect for event data must survive.
-				"use query_lfx_semantic_layer (preferred)",
+				"read read_lfx_standard_metrics_guidance and use query_lfx_standard_metrics",
 			},
 		},
 		{
@@ -38,7 +40,7 @@ func TestMeetingToolsClaimMeetingQuestions(t *testing.T) {
 			register: func(s *mcp.Server) { RegisterSearchMeetings(s, true) },
 			wants: []string{
 				"live HERE - prefer these tools over the semantic layer or query_lfx_lens",
-				"use query_lfx_semantic_layer (preferred)",
+				"read read_lfx_standard_metrics_guidance and use query_lfx_standard_metrics",
 			},
 		},
 		{
@@ -64,5 +66,23 @@ func TestMeetingToolsClaimMeetingQuestions(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestSearchMeetingsRedirectNamesServedToolsOnly pins that the events
+// redirect on search_meetings (both modes) names only tools the server
+// serves; list_metrics, get_dimension_values and help('doctrine') are not
+// served tool names and query_lfx_semantic_layer is not the events lane.
+func TestSearchMeetingsRedirectNamesServedToolsOnly(t *testing.T) {
+	for _, asGroups := range []bool{false, true} {
+		tool := listRegisteredTool(t, "search_meetings", func(s *mcp.Server) { RegisterSearchMeetings(s, asGroups) })
+		for _, banned := range []string{"list_metrics", "get_dimension_values", "help('doctrine')", "query_lfx_semantic_layer (preferred)"} {
+			if strings.Contains(tool.Description, banned) {
+				t.Errorf("asGroups=%v: description still names %q", asGroups, banned)
+			}
+		}
+		if n := len(tool.Description); n > schemaDescriptionBudget {
+			t.Errorf("asGroups=%v: description is %d bytes, budget %d", asGroups, n, schemaDescriptionBudget)
+		}
 	}
 }
