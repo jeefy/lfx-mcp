@@ -262,6 +262,11 @@ func TestOrgSeats_ForbiddenMapsToOrgGrantMessage(t *testing.T) {
 	if !strings.Contains(text, "organisation grant") || !strings.Contains(text, "auditor or writer") {
 		t.Errorf("403 must explain the org grant, got %q", text)
 	}
+	// Heimdall answers 403 for an unknown SFID too, so the text must also point
+	// at the identifier check.
+	if !strings.Contains(text, "not a known organisation") || !strings.Contains(text, "search_b2b_orgs") {
+		t.Errorf("403 must carry the unknown-SFID hint, got %q", text)
+	}
 	if strings.Contains(text, accessDeniedMessage) {
 		t.Error("403 on seats must use the org-grant wording, not the generic access-denied message")
 	}
@@ -282,10 +287,13 @@ func TestOrgSeats_DescriptionBudgetAndContent(t *testing.T) {
 	if n := len(tool.Description); n > 1000 {
 		t.Errorf("description is %d bytes, keep it under 1000", n)
 	}
-	for _, want := range []string{"search_b2b_orgs", "foundation_uid", "category", "organization grant", "include_seats", "Board & Committee"} {
+	for _, want := range []string{"search_b2b_orgs", "foundation_uid", "category", "organization grant", "include_seats", "Board & Committee", "direct child projects, as LFX Self Serve scopes it"} {
 		if !strings.Contains(tool.Description, want) {
 			t.Errorf("description missing %q", want)
 		}
+	}
+	if strings.Contains(tool.Description, "every descendant") {
+		t.Error("description must not claim descendants beyond direct children")
 	}
 	for _, banned := range []string{"Insights", "Jim", "because", "65 KB"} {
 		if strings.Contains(tool.Description, banned) {

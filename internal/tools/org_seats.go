@@ -41,7 +41,7 @@ const boardCommitteeCategory = "board"
 const orgSeatsNote = "Seats of this organisation across the projects in scope, as LFX Self Serve's Board & Committee tab shows them; complete for the scope."
 
 // orgSeatsForbiddenMessage is returned when committee-service answers 403.
-const orgSeatsForbiddenMessage = "Error: your identity does not hold the organisation grant (auditor or writer) that LFX Self Serve requires to read this organisation's seats"
+const orgSeatsForbiddenMessage = "Error: your identity does not hold the organisation grant (auditor or writer) that LFX Self Serve requires to read this organisation's seats (or the b2b_org_uid is not a known organisation — confirm the SFID with search_b2b_orgs)"
 
 // OrgSeatsConfig holds configuration for get_org_committee_seats.
 type OrgSeatsConfig struct {
@@ -60,7 +60,7 @@ func SetOrgSeatsConfig(cfg *OrgSeatsConfig) {
 // GetOrgCommitteeSeatsArgs defines the input parameters for the get_org_committee_seats tool.
 type GetOrgCommitteeSeatsArgs struct {
 	B2bOrgUID     string `json:"b2b_org_uid" jsonschema:"(required) B2B organization UID: the 18-character SFID from search_b2b_orgs (the same identifier search_members calls b2b_org_uid)"`
-	FoundationUID string `json:"foundation_uid,omitempty" jsonschema:"Scope seats to one membership foundation (its root project and every descendant). Omit for the organization's seats across all projects"`
+	FoundationUID string `json:"foundation_uid,omitempty" jsonschema:"Scope seats to one membership foundation (its root project and its direct child projects, as LFX Self Serve scopes it). Omit for the organization's seats across all projects"`
 	Category      string `json:"category,omitempty" jsonschema:"Exact committee category to keep, e.g. Board, Technical, Marketing; matched case-insensitively"`
 	IncludeSeats  bool   `json:"include_seats,omitempty" jsonschema:"Return the seat rows as well as the summary (default false: summary only)"`
 }
@@ -138,7 +138,7 @@ func RegisterGetOrgCommitteeSeats(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "get_org_committee_seats",
 		Description: "Summarise an organization's committee seats as LFX Self Serve's Org Lens Board & Committee tab shows them. " +
-			"b2b_org_uid is the 18-character SFID from search_b2b_orgs. Scope is one membership foundation (foundation_uid: its root project and every descendant) or, when omitted, the organization's seats across all projects. " +
+			"b2b_org_uid is the 18-character SFID from search_b2b_orgs. Scope is one membership foundation (foundation_uid: its root project and its direct child projects, as LFX Self Serve scopes it) or, when omitted, the organization's seats across all projects. " +
 			"Returns seats_total, people (distinct e-mails), board_seats vs committee_seats, by_category, by_project, by_role, editable vs foundation_controlled; include_seats adds the rows (name, e-mail, role, voting status, appointed_by, committee, project). " +
 			"category keeps one committee category, matched case-insensitively. The caller needs the organization grant (auditor or writer) LFX Self Serve requires; the result is complete for the scope, never truncated.",
 		Annotations: &mcp.ToolAnnotations{
@@ -149,7 +149,9 @@ func RegisterGetOrgCommitteeSeats(server *mcp.Server) {
 }
 
 // resolveFoundationFamily returns the foundation uid plus every uid of a
-// project whose parent is the foundation, skipping the ROOT pseudo-project,
+// project whose parent is the foundation (direct children only — the project
+// indexer's parent ref carries the immediate parent, and this mirrors LFX
+// Self Serve's getFoundationProjectUids), skipping the ROOT pseudo-project,
 // draining every page. Errors propagate: the caller fails closed rather than
 // silently scoping to the root alone.
 func resolveFoundationFamily(ctx context.Context, clients *lfxv2.Clients, foundationUID string) ([]string, error) {
