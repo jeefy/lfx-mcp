@@ -9,13 +9,14 @@ Dimension qualified_names are entity__field, prefix per metric — copy from exp
 
 ## Routing
 
-- explore_lfx_semantic_layer discovers metrics, dimensions and stored values; query_lfx_semantic_layer runs the query. Explore first.
-- query_lfx_standard_metrics answers common questions with governed metrics
-  named in plain words (contributors by=org, memberships by=tier...). When
-  one matches, PREFER it over the explore+query flow: it also reaches a
+- When a family in the standard-metrics inventory answers the question,
+  call query_lfx_standard_metrics directly; do not explore this layer or the
+  lens first to see what is there. The families are governed metrics named
+  in plain words (contributors by=org, memberships by=tier...) and reach a
   company's subsidiaries and a project's tree at ANY depth, which this layer
   does not (see REACH under Scope). Inventory:
   read_lfx_standard_metrics_guidance.
+- explore_lfx_semantic_layer discovers metrics, dimensions and stored values; query_lfx_semantic_layer runs the query. Explore first.
 - query_lfx_lens (text-to-SQL): cross-domain joins and hierarchy questions no
   standard metric expresses — label its answers as generated SQL. Membership
   counts as of a past date or by year, social listening aggregates, event,
@@ -24,6 +25,19 @@ Dimension qualified_names are entity__field, prefix per metric — copy from exp
 - Committee/board/ambassador rosters: committee tools. Meeting lists and one
   meeting's details: meeting tools. Meeting ATTENDANCE aggregates are in this
   layer (recipe 12).
+- Where this layer and the standard metrics read differently (both are
+  right; say which one you used): dates are UTC calendar days on the
+  standard metrics and the session clock on ad hoc windows here, so a window
+  can differ by a day's activity; an unknown literal is zero rows here and a
+  rejection with candidates there; maintainers here count the whole index
+  unless filtered to LF projects, the family counts LF projects only; event
+  registrations here group by registration date unless you pick the event
+  start date, the family uses the event start date; speakers here include
+  every proposal status unless filtered to Accepted, the family counts
+  Accepted only; training and certification by-account readings here keep
+  accounts with zero in the window, the family omits them; placeholder
+  accounts ('Individual - No Account', 'TI Account') appear as accounts here
+  and are unattributed there.
 
 ## Protocol
 
@@ -121,8 +135,10 @@ state the window, never claim an exact UTC calendar month.
 Default is the trailing 12 months (the prior 365 complete days); state the concrete
 dates and reuse them in any lens question. YTD needs AND metric_time <= today —
 installs can be future-dated. Members as of date D: membership_count with metric_time
-<= 'D' AND asset_id__end_date >= 'D'; today's actives are current_membership_count;
-new members = new_membership_count by install date.
+<= 'D' AND asset_id__end_date >= 'D'; an end date that is NULL means still
+active, so the as-of predicate is `end_date IS NULL OR end_date > D`; today's
+actives are current_membership_count; new members = new_membership_count by
+install date.
 
 ## Value discovery
 

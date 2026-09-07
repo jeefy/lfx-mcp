@@ -21,7 +21,9 @@ what is never acceptable is passing a slug or an organization name that has
 not come back from them. The lens guards both: an unknown slug, or an
 organization name that matches no account carrying data, is a rejection
 with up to five candidates — never a zero. Pick from the candidates or go
-back to the search tool; never pass the everyday name again.
+back to the search tool; never pass the everyday name again. The slugs in
+this document's worked calls (cncf, tlf, k8s) show the call shape only;
+resolve them in-session like any other name.
 
 ## The contract
 
@@ -112,18 +114,24 @@ roster), project_health and software_value (a daily snapshot).
   roster with a code contribution in each year. The roster itself has no
   honest history, so maintainers with an end_date other than today is a
   rejection that says exactly this.
-- project_health and software_value are read on the latest snapshot on or
-  before end_date (applied.snapshot_date). project_health is the v2 health
+- project_health is read on the latest snapshot on or before end_date
+  (applied.snapshot_date). project_health is the v2 health
   score, whose snapshots start on 2026-08-25: an end_date before that
   returns "no snapshot on or before end_date", not a zero. The v2 score is
   withheld under a coverage threshold, so only a subset of LF-hosted
   projects carry one — applied.coverage says how many, out of the LF-hosted
   projects with a health row on the snapshot day (more have been tracked at
-  some point). The family reports the count of scored projects and their
-  mean score; the average is the v2 health score from the lf-dbt DBT-1
-  deployment (week of 2026-09-07) onward, and before that day the layer's
-  average still reads the v1 score. Say the coverage whenever the count is
-  the answer.
+  some point). Until the lf-dbt DBT-1 deployment lands, call the average the
+  v1 score; the count and the categories are v2. The family reports the
+  count of scored projects and their mean score; the average is the v2
+  health score from the lf-dbt DBT-1 deployment (week of 2026-09-07)
+  onward, and before that day the layer's average still reads the v1 score.
+  Say the coverage whenever the count is the answer.
+- software_value is not pinned to one day: each LF-hosted project is read
+  as of its own latest snapshot row on or before end_date, and a project
+  whose latest row carries no value contributes nothing, so
+  applied.snapshot_date stays null and applied.coverage says how many
+  LF-hosted projects carry a value. Say the coverage with the total.
 
 ## Defaults and the applied block
 
@@ -133,7 +141,12 @@ window: the trailing 365 days before end_date on the activity, event,
 training and social families; all history on new_members and
 membership_churn; the trailing year on any day or week series. A month,
 quarter or year series on an at-date family with no start_date runs from
-the first row of data.
+the first row of data. A future end_date does not move the default window
+start; a window that starts after today returns zero rows with
+includes_future_dated set — set start_date explicitly for a future-dated
+window. For a relative phrase (last N years, trailing quarter) take the
+family's default window or a bare period series rather than a hand-picked
+start_date: a computed start clips the first period.
 
 Every result carries an `applied` block: metric, by, kind (window or
 at-date), project, subprojects, org, subsidiaries, start_date, end_date,
@@ -142,8 +155,10 @@ definition produced the figure), defaulted (the list of parameters the lens
 chose), partial_last_period, includes_future_dated, truncated (limit cut
 rows off), snapshot_date, coverage, engine. Read the scope and the window
 from it, never from the request you think you sent. The sentence under a
-figure comes from `definition` and `defaulted`. `engine` is provenance for
-you and never goes in an answer. Then offer what a reader most often wants
+figure comes from `definition` and `defaulted`. Say partial_last_period,
+includes_future_dated or truncated only when the applied block sets the
+flag; never infer one by comparing dates yourself. `engine` is provenance
+for you and never goes in an answer. Then offer what a reader most often wants
 next — the breakdown, another window, the series. Do not compare the figure
 with a number from another dashboard.
 
@@ -165,10 +180,17 @@ For a named organization Y:
 | separate | Y plus every subsidiary under it, any depth | one row each, with parent_org alongside |
 | combined | Y plus every subsidiary under it, any depth | folded into ONE row: the org columns leave the result |
 
-With no org named, subsidiaries=combined on a by=org reading is one row per
-parent organization, resolved to the top of each chain. MOST QUESTIONS WANT
-BOTH the headline and the breakdown — two calls, combined then separate.
-Never derive one from the other: distinct counts do not sum.
+With no rollup asked for, the reading is subsidiaries=excluded (the named
+account alone); choosing combined or separate to answer a broader question
+is a scope choice the answer names in words, not something left to the
+applied block. separate is the breakdown, so it needs the grouping that
+carries it: subsidiaries=separate needs by=org and subprojects=separate
+needs by=project — on any other grouping the call is rejected, and one
+figure is combined. With no org named, subsidiaries=combined on a by=org
+reading is one row per parent organization, resolved to the top of each
+chain. MOST QUESTIONS WANT BOTH the headline and the breakdown — two calls,
+combined then separate. Never derive one from the other: distinct counts do
+not sum.
 
 ## Inventory
 
@@ -184,15 +206,15 @@ series adds `period` in front; an at-date series adds `period_end` too.
 | contributions | window | total, org, project, contributor, type, platform, org_region | Code contribution volume | [account, parent_org / project, project_name / handle, contributor, account / type / platform / org_region,] code_contribution_activities | Additive, bots excluded; by=contributor is one row per GitHub identity (`handle`, a profile URL) with the display name and the resolved account; org_region is the LF region of the employer's HQ |
 | contributing_organizations | window | total, project | Distinct organizations credited with a code contribution | [project, project_name,] total_contributing_organizations | Organizations from the enrichment vocabulary, not CRM accounts; a distinct count: never sum rows |
 | participants | window | total, org, project | Distinct people with a code contribution OR a collaboration activity | [...,] total_contributors_with_collaboration | A superset of contributors (issues, comments, reviews count); distinct people: never sum rows |
-| maintainers | at-date | total, org, project, maintainer | Active maintainers today (LF projects only); with period, today's roster active in each period | [account / foundation, project, project_name / project, project_name, maintainer, account, role,] active_maintainers | Distinct people; the NULL account row is maintainers with no resolved employer; today only unless period; by=maintainer has no series |
+| maintainers | at-date | total, org, project, maintainer | Active maintainers today (LF projects only); with period, today's roster active in each period | [account / foundation, project, project_name / project, project_name, maintainer, account, role,] active_maintainers | Distinct people; LF projects only: an ad hoc count over the whole maintainers index reads higher; the NULL account row is maintainers with no resolved employer; today only unless period; by=maintainer has no series |
 | maintainer_contributions | window | total, org, project, maintainer | Code contributions by people on the CURRENT maintainer roster of the activity's project | [...,] maintainer_contributions[, contributing_maintainers] | Maintainership as of the build, contributions in the window; maintainer_contributions is additive, contributing_maintainers a distinct count; "share of work" is this over contributions for the same scope and window |
-| project_health | at-date | total, foundation, category, population | Projects with a v2 health score and their mean score, on the latest snapshot on or before end_date | [foundation / category / population,] project_health_count, avg_project_health_score | v2 score; snapshots start on 2026-08-25; a subset of LF-hosted projects (applied.coverage); LF-hosted unless by=population (rows lf_hosted and index); category is the stored v2 band name (Excellent, Healthy, Fair, Concerning, Critical), never a threshold; a distinct-project count: never sum rows; a mean of project scores: never re-average; the average is v2 from the DBT-1 deployment (week of 2026-09-07) onward, v1 before |
-| software_value | at-date | total, foundation, population | COCOMO software value, each project's latest row on or before end_date, summed | [foundation / population,] total_software_value | USD; additive across projects at a date, never across days; a project whose latest row is a health-only day contributes nothing, so totals read low, never inflated |
-| event_registrations | window | total, event, org | Accepted registrations of events starting in the window, and the distinct people behind them | [event / account, parent_org,] total_registrations, total_unique_registrants, total_checked_in_attendees | The window is the EVENT start date; registrants and attendees are distinct people by email: never sum them across rows; by=org is the registrant's account, NULL = unattributed |
+| project_health | at-date | total, foundation, category, population | Projects with a v2 health score and their mean score, on the latest snapshot on or before end_date | [foundation / category / population,] project_health_count, avg_project_health_score | Until the lf-dbt DBT-1 deployment lands, call the average the v1 score; the count and the categories are v2. v2 score; snapshots start on 2026-08-25; a subset of LF-hosted projects (applied.coverage); LF-hosted unless by=population (rows lf_hosted and index); category is the stored v2 band name (Excellent, Healthy, Fair, Concerning, Critical), never a threshold; a distinct-project count: never sum rows; a mean of project scores: never re-average; the average is v2 from the DBT-1 deployment (week of 2026-09-07) onward, v1 before |
+| software_value | at-date | total, foundation, population | COCOMO software value summed over each LF-hosted project's own latest snapshot row on or before end_date, whatever day that row is on | [foundation / population,] total_software_value | USD; not pinned to one day (applied.snapshot_date is null): each project as of its own latest row; a project whose latest row is a health-only day contributes nothing, so totals read low, never inflated — applied.coverage says how many LF-hosted projects carry a value; additive across projects, never across days |
+| event_registrations | window | total, event, org | Accepted registrations of events starting in the window, and the distinct people behind them | [event / account, parent_org,] total_registrations, total_unique_registrants, total_checked_in_attendees | The window is the EVENT start date (an ad hoc query by registration date reads differently); registrants and attendees are distinct people by email: never sum them across rows; by=org is the registrant's account, NULL = unattributed |
 | event_sponsorships | window | total, org, event | Sponsorship revenue and count of events starting in the window | [account, parent_org / event,] total_sponsorship_revenue, total_sponsorship_count | Additive; USD; all tier types |
-| speakers | window | total, event | Accepted speakers of events starting in the window | [event,] total_speakers | Distinct people with an Accepted speaker status (Sessionize proposals accepted, Bevy listed speakers); rejected and in-review proposals are excluded; no org scope |
-| training_enrollments | window | total, org, course | Enrollments and enrolled users by enrollment date | [account, parent_org / course,] total_enrollments, total_enrolled_users | Platform data only (TI + edX), so lifetime totals read below the official trained figure; the edX branch carries no account and sits in the NULL account row; enrolled users is a distinct count |
-| certifications | window | total, org | Completed certifications by enrollment date | [account, parent_org,] total_certifications | Additive; counted at enrollment time; the edX branch has no account |
+| speakers | window | total, event | Accepted speakers of events starting in the window | [event,] total_speakers | Distinct people with an Accepted speaker status (Sessionize proposals accepted, Bevy listed speakers); rejected and in-review proposals are excluded, so an ad hoc count over all statuses reads higher; no org scope |
+| training_enrollments | window | total, org, course | Enrollments and enrolled users by enrollment date | [account, parent_org / course,] total_enrollments, total_enrolled_users | Platform data only (TI + edX), so lifetime totals read below the official trained figure; the edX branch carries no account and sits in the NULL account row; 'Individual - No Account' and 'TI Account' are placeholder accounts for unaffiliated learners: report them as unattributed, never as organizations; by=org and by=course omit accounts and courses with no enrollment in the window; enrolled users is a distinct count |
+| certifications | window | total, org | Completed certifications by enrollment date | [account, parent_org,] total_certifications | Additive; counted at enrollment time; the edX branch has no account (the NULL account row); 'Individual - No Account' and 'TI Account' are placeholder accounts for unaffiliated learners: report them as unattributed, never as organizations; by=org omits accounts with no certification in the window |
 | social_mentions | window | total, project, network, sentiment | Social listening mentions, distinct authors and sentiment by mention date | [project, project_name / network / sentiment,] social_listening_mentions, social_listening_unique_authors, social_listening_positive_mentions, social_listening_negative_mentions | Mention counts are additive; unique_authors is a distinct count; neutral or unknown sentiment is in neither positive nor negative; no org scope |
 | social_reach | window | total, project | Potential reach of the mentions by mention date | [project, project_name,] social_listening_total_author_followers, social_listening_avg_author_followers | The sum counts a prolific author once per mention; the average is per mention; NULL follower counts excluded; no org scope |
 
@@ -227,7 +249,9 @@ never sum to a subtree total — that is a reason to prefer the standard
 metric, not something to caption. Memberships attach at FOUNDATION level, so
 a leaf project's own memberships are zero by attachment, not by data loss.
 An unknown slug is rejected with candidate slugs and names; 'kubernetes' is
-not a slug, 'k8s' is.
+not a slug, 'k8s' is. A consortium's memberships can sit on a sibling fund
+project (search_projects returns both, the fund with a '-fund' slug): query
+both and report the combined figure, saying so.
 
 ## What goes in the answer
 
@@ -255,7 +279,11 @@ another window or the series.
   on both kinds and means the last row is to-date, not a full period.
 - by=org rows come per account with the parent alongside: read account
   rankings straight off the rows, and take parent figures from
-  subsidiaries=combined rather than from a client-side sum.
+  subsidiaries=combined rather than from a client-side sum — for additive
+  metrics too: a top-N cut hides subsidiaries a hand-sum would miss.
+- "How many developers participated / took part" means participants (a
+  code contribution OR a collaboration activity); name contributors (code
+  only) as the narrower alternative, not the default.
 - The NULL account row is unattributed work, and the NULL employer row is a
   maintainer whose employer was not resolved — never an organization, never
   folded into a parent. Report them as unattributed. The NULL country or
@@ -296,7 +324,13 @@ another window or the series.
   installation, the current year to date.
 - An org with subsidiaries: contributions, org=International Business
   Machines Corporation, subsidiaries=combined → IBM and everything under it
-  as one figure; subsidiaries=separate for the table with parent_org.
+  as one figure, because a rollup was asked for; absent that, start from
+  excluded. by=org with subsidiaries=separate for the table with parent_org.
+- A family that rejects org (speakers, project_health, software_value, the
+  social families) with an org breakdown still wanted: say the rejection,
+  then ONE lens query whose filter mirrors the family's stated definition
+  (the inventory row's status and source conditions), labelled as generated
+  SQL; never several differently phrased attempts.
 - A rejection: memberships, start_date=2020-01-01 → "start_date needs period
   for an at-date metric; the state on a single day is end_date alone" — add
   period=year for the series, or drop start_date for one day.
@@ -313,9 +347,15 @@ not retry the same one.
   today on maintainers without period; period on a family and grouping
   with no series yet.
 - an org that matches no data-bearing account: 400 with candidates (see
-  Organizations); an unknown project slug: 400 with candidates.
+  Organizations) — candidates are stored names containing the text you
+  sent; a spelling variant (Redhat, Micro Soft) returns none — resolve with
+  search_b2b_orgs; an unknown project slug: 400 with candidates.
+- subsidiaries=separate without by=org, or subprojects=separate without
+  by=project: the breakdown needs its grouping; one figure is combined.
+- since, until, as_of, group_by, where: rejected by the request schema
+  before the family sees them; the parameters are the contract table above.
 - org on a family whose model carries no account.
 - an order_by field that is not one of the result columns (the message
   lists them, minus any column the call folds away).
-- a 404 on project_health or software_value: no snapshot on or before
-  end_date (v2 health snapshots start on 2026-08-25).
+- a 404 on project_health: no snapshot on or before end_date (v2 health
+  snapshots start on 2026-08-25).
