@@ -5,6 +5,7 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"regexp"
 	"strings"
 	"testing"
@@ -316,11 +317,11 @@ func TestStandardMetricsGuidanceContent(t *testing.T) {
 		"Do not compare the figure\nwith a number from another dashboard",
 		// the switches
 		"## The switches, row by row",
-		"| combined (default) | X plus everything under it, any depth | folded into ONE row",
+		"| combined (default) | X plus everything under it, any depth | folded together: the project columns leave the result; the rows are whatever by groups",
 		"| separate | X plus everything under it, any depth | as the metric groups them, one row each: the breakdown |",
 		"| excluded | X's own bucket only, nothing under it |",
 		"| excluded (default) | the Y account only |",
-		"| combined | Y plus every subsidiary under it, any depth | folded into ONE row",
+		"| combined | Y plus every subsidiary under it, any depth | folded together: the org columns leave the result; the rows are whatever by groups",
 		"one row per parent organization",
 		"MOST QUESTIONS WANT BOTH",
 		"Never derive one from the other: distinct counts do\nnot sum",
@@ -422,7 +423,7 @@ func TestStandardMetricsGuidanceContent(t *testing.T) {
 		"a reading this\n  family does not give yet (it arrives as its own metric)",
 		"say the organization reading is not\n  available rather than deriving it",
 		"a reading this family does not give yet (it arrives as its own metric): report memberships, say the grain",
-		"count with\n  by=total, list with limit and order_by (applied.row_count is the\n  breakdown's size)",
+		"count with\n  by=total, list with limit and order_by (applied.truncated says when the\n  list is partial)",
 		"last N years, last N months, trailing quarter",
 		"paying-only, new-to-the-LF and lost organizations are the same kind of reading",
 		"\"new logos\" (organizations new to the LF altogether) is a different reading this family does not give",
@@ -557,6 +558,38 @@ func TestGuidanceCarriesNoCalendarDate(t *testing.T) {
 	for _, banned := range []string{"week of", "DBT-1 deployment lands", "from that deployment", "count them"} {
 		if strings.Contains(standardMetricsGuidance, banned) {
 			t.Errorf("standard metric guidance still says %q", banned)
+		}
+	}
+}
+
+// TestCombinedFoldsAHierarchyNotTheResult pins the Copilot round-3 fix: a
+// combined fold removes the project or org columns and keeps whatever the by
+// grouping produces; only by=total is one figure. No client text may say
+// combined is "one row" or "one figure", which had callers reading a valid
+// by=org breakdown as a wrong shape.
+func TestCombinedFoldsAHierarchyNotTheResult(t *testing.T) {
+	tool := listRegisteredTool(t, "query_lfx_standard_metrics", RegisterStandardMetrics)
+	raw, err := json.Marshal(tool.InputSchema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, text := range map[string]string{
+		"standard metrics schema":   string(raw),
+		"standard metrics guidance": standardMetricsGuidance,
+		"semantic layer guidance":   semanticLayerGuidance,
+	} {
+		for _, banned := range []string{
+			"folded into ONE figure", "folded into ONE row", "folded into one row",
+			"those folded into one row", "one figure is combined",
+		} {
+			if strings.Contains(text, banned) {
+				t.Errorf("%s still says %q: combined folds a hierarchy, not the result", name, banned)
+			}
+		}
+	}
+	for _, want := range []string{"the project columns leave the result", "the org columns leave the result"} {
+		if !strings.Contains(string(raw), want) || !strings.Contains(standardMetricsGuidance, want) {
+			t.Errorf("schema and guidance must both say %q", want)
 		}
 	}
 }

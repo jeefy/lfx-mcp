@@ -319,8 +319,9 @@ period the state at each period end — "members at the end of 2022" and
 foundation's own slug (tlf) is one bucket, not the LF-wide scope. Every date is a UTC calendar day;
 end_date defaults to today. The switches say what a name covers: excluded =
 that project or account alone, separate = it and everything under it one row
-each (the breakdown), combined = folded into one row (subprojects=combined
-folds every project column of the result). The
+each (the breakdown), combined = the hierarchy folded together (the project
+or account columns leave the result; any other by grouping keeps its rows,
+by=total is one figure). The
 DEFAULTS are the plain reading: a project name alone is its whole tree as ONE figure, an
 organization name alone is that account, and an activity family with no
 start_date is the trailing 365 days; every result carries an applied block

@@ -589,7 +589,7 @@ func TestStandardMetricResultRendersCompactRows(t *testing.T) {
 	body := []byte(`{"columns":["account","parent_org","current_membership_count"],` +
 		`"data":[{"account":"Acme","parent_org":"Acme","current_membership_count":3},` +
 		`{"account":"Beta","parent_org":null,"current_membership_count":1}],` +
-		`"row_count":2,"applied":{"metric":"memberships","by":"org","row_count":2,"truncated":false}}`)
+		`"row_count":2,"applied":{"metric":"memberships","by":"org","truncated":false}}`)
 	res, _, err := standardMetricResult(body)
 	if err != nil {
 		t.Fatal(err)

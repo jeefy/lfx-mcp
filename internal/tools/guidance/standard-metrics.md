@@ -185,7 +185,7 @@ For a named project X:
 
 | subprojects | rows read | rows returned |
 |---|---|---|
-| combined (default) | X plus everything under it, any depth | folded into ONE row: the project columns leave the result |
+| combined (default) | X plus everything under it, any depth | folded together: the project columns leave the result; the rows are whatever by groups (by=total one figure, by=org one row per organization) |
 | separate | X plus everything under it, any depth | as the metric groups them, one row each: the breakdown |
 | excluded | X's own bucket only, nothing under it | as the metric groups them |
 
@@ -195,15 +195,16 @@ For a named organization Y:
 |---|---|---|
 | excluded (default) | the Y account only | as the metric groups them |
 | separate | Y plus every subsidiary under it, any depth | one row each, with parent_org alongside |
-| combined | Y plus every subsidiary under it, any depth | folded into ONE row: the org columns leave the result |
+| combined | Y plus every subsidiary under it, any depth | folded together: the org columns leave the result; the rows are whatever by groups (by=total one figure, by=project one row per project) |
 
 With no rollup asked for, the reading is subsidiaries=excluded (the named
 account alone); choosing combined or separate to answer a broader question
 is a scope choice the answer names in words, not something left to the
 applied block. separate is the breakdown, so it needs the grouping that
 carries it: subsidiaries=separate needs by=org and subprojects=separate
-needs by=project — on any other grouping the call is rejected, and one
-figure is combined. With no org named, subsidiaries=combined on a by=org
+needs by=project — on any other grouping the call is rejected; combined
+folds the hierarchy and keeps that grouping's rows, and by=total is what
+asks for one figure. With no org named, subsidiaries=combined on a by=org
 reading is one row per parent organization, resolved to the top of each
 chain. MOST QUESTIONS WANT BOTH the headline and the breakdown — two calls,
 combined then separate. Never derive one from the other: distinct counts do
@@ -309,8 +310,8 @@ LF-hosted projects today", and the offer of the breakdown by project.
   subsidiaries=combined rather than from a client-side sum — for additive
   metrics too: a top-N cut hides subsidiaries a hand-sum would miss; a
   breakdown returns every row and can run to thousands: count with
-  by=total, list with limit and order_by (applied.row_count is the
-  breakdown's size).
+  by=total, list with limit and order_by (applied.truncated says when the
+  list is partial).
 - "How many developers participated / took part" means participants (a
   code contribution OR a collaboration activity); name contributors (code
   only) as the narrower alternative, not the default.
@@ -398,7 +399,8 @@ not retry the same one.
   sent; a spelling variant (Redhat, Micro Soft) returns none — resolve with
   search_b2b_orgs; an unknown project slug: 400 with candidates.
 - subsidiaries=separate without by=org, or subprojects=separate without
-  by=project: the breakdown needs its grouping; one figure is combined.
+  by=project: the breakdown needs its grouping; combined folds the
+  hierarchy and keeps the by rows; by=total is one figure.
 - since, until, as_of, group_by, where: rejected by the request schema as
   an unexpected property before the family sees them; the message names only
   the property you sent, so the replacement is the contract table above
