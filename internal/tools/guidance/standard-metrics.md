@@ -42,7 +42,7 @@ Every family takes the same parameters, and nothing per family:
 | subsidiaries | excluded, separate or combined: what the org name covers | excluded |
 | start_date | yyyy-mm-dd, a UTC calendar day | the family's window (below) |
 | end_date | yyyy-mm-dd, a UTC calendar day; for "each year since X" or "through now" leave it unset — a future end_date reads the scheduled state on that day and sets includes_future_dated, it is not the to-date row | today (UTC) |
-| period | day, week, month, quarter or year: one row per period | none = one figure |
+| period | day, week, month, quarter or year: adds a time dimension to by | none = no time series |
 | order_by | result columns, - prefix for descending | none |
 | limit | maximum rows; the result says whether it was cut | none = every row |
 
@@ -89,8 +89,9 @@ Answer four questions, then call once.
    - subsidiaries: excluded | separate | combined, DEFAULT excluded.
 4. WHICH DATES? Two kinds of family, and the same three parameters on both.
    - A WINDOW family counts what happened between start_date and end_date
-     inclusive. period adds one row per period, column `period` = the
-     period's first day.
+     inclusive. period adds a time dimension to by: by=org with period=month
+     is one row per organization per month; column `period` is the period's
+     first day. Without period the by grouping remains.
    - An AT-DATE family (memberships, maintainers, project_health,
      software_value) reports the state on end_date. With period, one row
      per period end from start_date to end_date; if end_date falls inside a

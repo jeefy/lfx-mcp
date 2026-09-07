@@ -68,3 +68,36 @@ func TestMembershipAsOfUsesTheNonNullTermEnd(t *testing.T) {
 		t.Error("membership as-of guidance still invents NULL-ended terms")
 	}
 }
+
+// Period is a second grouping axis, not a replacement for by. In particular,
+// omitting it cannot turn an organization breakdown into a single figure.
+func TestPeriodAddsTimeWithoutReplacingBy(t *testing.T) {
+	tool := listStandardMetricsTool(t)
+	period := schemaPropertyDescription(t, tool, "period")
+	const omission = "Omitted = no time series; the rows are whatever by groups, one figure on by=total"
+	if !strings.Contains(period, omission) {
+		t.Error("period schema must preserve by when the time grouping is omitted")
+	}
+	// The only single-figure claim in this field must explicitly be by=total.
+	if strings.Contains(strings.ToLower(strings.ReplaceAll(period, omission, "")), "one figure") {
+		t.Error("period schema has an unqualified single-figure claim")
+	}
+	for name, text := range map[string]string{
+		"period schema":             period,
+		"standard metrics guidance": standardMetricsGuidance,
+		"semantic layer guidance":   semanticLayerGuidance,
+	} {
+		text = strings.Join(strings.Fields(text), " ")
+		for _, banned := range []string{"Omitted = one figure", "none = one figure", "instead of one figure"} {
+			if strings.Contains(text, banned) {
+				t.Errorf("%s still claims %q", name, banned)
+			}
+		}
+		if !strings.Contains(text, "by=org with period=month is one row per organization per month") {
+			t.Errorf("%s must explain that period preserves the organization grouping", name)
+		}
+	}
+	if !strings.Contains(standardMetricsGuidance, "| none = no time series |") {
+		t.Error("the period default in the contract table must be no time series, not a total")
+	}
+}

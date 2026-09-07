@@ -310,8 +310,10 @@ training_enrollments, certifications, social_mentions, social_reach; their
 groupings (by) are in read_lfx_standard_metrics_guidance. by left out is the
 first listed, and the scope supplies the other axis (by=project with org =
 that company's projects; by=org with project = that project's companies).
-Two kinds: a WINDOW family counts between start_date and end_date, and period
-adds one row per period; an AT-DATE family (memberships, maintainers,
+period adds a time dimension to by: by=org with period=month is one row per
+organization per month; without period the by grouping remains.
+Two kinds: a WINDOW family counts between start_date and end_date;
+an AT-DATE family (memberships, maintainers,
 project_health, software_value) reports the state on end_date, and with
 period the state at each period end. maintainers is the exception: today's
 roster only; with period, one row per period of today's maintainers active

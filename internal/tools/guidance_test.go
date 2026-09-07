@@ -278,7 +278,7 @@ func TestStandardMetricsGuidanceContent(t *testing.T) {
 		"## The contract",
 		"| start_date | yyyy-mm-dd, a UTC calendar day | the family's window (below) |",
 		"| end_date | yyyy-mm-dd, a UTC calendar day; for \"each year since X\" or \"through now\" leave it unset",
-		"| period | day, week, month, quarter or year: one row per period | none = one figure |",
+		"| period | day, week, month, quarter or year: adds a time dimension to by | none = no time series |",
 		"There is no since, until or as_of",
 		"rejected by the\nrequest schema as an unexpected property; the words are start_date and\nend_date",
 		"There is no free-form filter",
