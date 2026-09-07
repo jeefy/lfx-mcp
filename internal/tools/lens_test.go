@@ -251,7 +251,7 @@ func TestExploreSemanticLayerDescription(t *testing.T) {
 		"search_b2b_orgs",
 		// Routing to the neighbours.
 		"query_lfx_semantic_layer",
-		"past-date membership counts, cross-domain joins",
+		"query_lfx_lens is ONLY for cross-domain joins or guidance-sanctioned fallback",
 		"social listening (mentions, sentiment, reach)",
 		"Board/committee/ambassador rosters: committee tools",
 		"Start here unless exact names are known",
@@ -453,6 +453,62 @@ func TestCriticalGuidanceSurvivesSchemaCompaction(t *testing.T) {
 // TestAllLensToolDescriptionsFitBudget guards every description that ships in
 // tools/list, not just the semantic layer's. query_lfx_lens has far less
 // headroom and is the likeliest to drift past the cut unnoticed.
+// TestLayerToolsRouteToTheStandardMetricsFirst pins the first line of both
+// layer tool descriptions: the routing preamble is the action a model reads
+// before anything else, so it must be first and must name the inventory.
+func TestLayerToolsRouteToTheStandardMetricsFirst(t *testing.T) {
+	const preamble = "If a standard metric answers the question (inventory: read_lfx_standard_metrics_guidance), call query_lfx_standard_metrics and do not explore first."
+	for name, desc := range map[string]string{
+		"explore": exploreSemanticLayerDescription,
+		"query":   querySemanticLayerDescription,
+	} {
+		if !strings.HasPrefix(desc, preamble) {
+			t.Errorf("%s description does not start with the routing preamble", name)
+		}
+		if strings.Count(desc, "query_lfx_standard_metrics") != 1 {
+			t.Errorf("%s description should route to the standard metrics once, in the preamble", name)
+		}
+	}
+}
+
+// TestNoToolCallsMembershipsATodayOnlySnapshot pins the R17 fix: the memberships
+// standard metric reads any date and any period, so no tool or field text may
+// send a past-date or by-year membership question to the lens.
+func TestNoToolCallsMembershipsATodayOnlySnapshot(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		register func(*mcp.Server)
+	}{
+		{"explore_lfx_semantic_layer", RegisterExploreSemanticLayer},
+		{"query_lfx_semantic_layer", RegisterQuerySemanticLayer},
+		{"query_lfx_lens", RegisterQueryLFXLens},
+	} {
+		tool := listRegisteredTool(t, tc.name, tc.register)
+		texts := []string{tool.Description}
+		if tool.InputSchema != nil {
+			raw, err := json.Marshal(tool.InputSchema)
+			if err != nil {
+				t.Fatalf("%s: marshal schema: %v", tc.name, err)
+			}
+			texts = append(texts, string(raw))
+		}
+		for _, text := range texts {
+			for _, banned := range []string{"today-only", "past-date membership", "past-date or by-year"} {
+				if strings.Contains(text, banned) {
+					t.Errorf("%s still says %q", tc.name, banned)
+				}
+			}
+		}
+	}
+	lens := listRegisteredTool(t, "query_lfx_lens", RegisterQueryLFXLens)
+	if !strings.Contains(lens.Description, "Use this tool ONLY as a FALLBACK") {
+		t.Error("query_lfx_lens description should open its use list with the fallback rule")
+	}
+	if !strings.Contains(lens.Description, "Membership counts on any date or by year are the memberships standard metric") {
+		t.Error("query_lfx_lens description should send membership counts on any date to the standard metric")
+	}
+}
+
 func TestAllLensToolDescriptionsFitBudget(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
