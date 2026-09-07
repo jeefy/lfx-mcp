@@ -222,8 +222,9 @@ func TestStandardMetricsSurface_NamesNoWarehouseRecipe(t *testing.T) {
 		}
 	}
 	// The removed date parameters are gone from the argument struct, not
-	// aliased: a caller that sends one gets the lens rejection naming the
-	// new word, and nothing here translates it silently.
+	// aliased: the SDK's closed schema refuses a call that sends one, naming
+	// the unexpected property (TestStandardMetrics_LegacyNamesAreRejectedAtTheSchema),
+	// and nothing here translates it silently.
 	for _, field := range []string{"SavedQuery", "Foundation", "Where", "Since", "Until", "AsOf"} {
 		if _, ok := reflect.TypeOf(StandardMetricsArgs{}).FieldByName(field); ok {
 			t.Errorf("StandardMetricsArgs still carries %s; it is not part of the contract", field)

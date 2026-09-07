@@ -40,7 +40,7 @@ func RegisterQueryLFXLens(server *mcp.Server) {
 		Name: "query_lfx_lens",
 		Description: `Ask natural language questions about a project's data using ad-hoc SQL generation.
 
-Use this tool ONLY as a FALLBACK: switch here only when the semantic layer genuinely cannot express the question - after discovery (list_metrics, get_dimensions, get_dimension_values), the read_lfx_semantic_layer_guidance recipes, and two differently-formulated queries have failed. Zero rows or an unknown-name error is a discovery failure, not a reason to switch. Membership counts on any date or by year are the memberships standard metric (start_date/end_date/period), not this tool.
+Use this tool ONLY as a FALLBACK: switch here only when the semantic layer genuinely cannot express the question - after discovery (list_metrics, get_dimensions, get_dimension_values), the read_lfx_semantic_layer_guidance recipes, and two differently-formulated queries have failed - or when a guidance document routes the question here directly (a cross-domain join; an org breakdown on a standard-metric family that rejects org: one query, as the guidance says). Zero rows or an unknown-name error is a discovery failure, not a reason to switch. Membership counts on any date or by year are the memberships standard metric (start_date/end_date/period), not this tool.
 
 Everything else - contributors, activities, memberships, events and sponsorships, registrations, education, maintainer rosters/counts/names, health, social listening (mentions, sentiment, reach) - is a standard metric first (query_lfx_standard_metrics; inventory in read_lfx_standard_metrics_guidance), then explore_lfx_semantic_layer + query_lfx_semantic_layer when no family fits. Committee/board rosters: the committee tools.
 
