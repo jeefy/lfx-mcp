@@ -153,13 +153,39 @@ func TestSearchProjects_IncludeTotalLowerBound(t *testing.T) {
 	}
 }
 
-func TestSearchProjects_IncludeTotalCountErrorIsFriendly(t *testing.T) {
+func TestSearchProjects_IncludeTotalCountErrorDegradesToPage(t *testing.T) {
+	// A failed count must not discard a successful page: total/total_complete
+	// stay absent (never a complete zero) and a note names the recovery.
 	api := setupProjectTest(t)
-	api.Respond(resourcesPath, page(nil, ""))
-	api.RespondStatus(countPath, http.StatusForbidden, `{"message":"forbidden"}`)
+	api.Respond(resourcesPath, page([]string{projectDoc("u1", "a", "A", "", "")}, "next"))
+	api.RespondStatus(countPath, http.StatusInternalServerError, `{"message":"search backend unavailable"}`)
 	res, _, _ := handleSearchProjects(context.Background(), stubCallToolRequest(), SearchProjectsArgs{IncludeTotal: true})
-	if !res.IsError || !strings.Contains(allResultText(t, res), accessDeniedMessage) {
-		t.Errorf("count 403 should map to access-denied wording, got %q", allResultText(t, res))
+	if res.IsError {
+		t.Fatalf("page must be returned despite the count failure: %s", allResultText(t, res))
+	}
+	out := resultJSON(t, res)
+	if len(out["resources"].([]any)) != 1 || out["page_token"] != "next" {
+		t.Errorf("page lost: %v", out)
+	}
+	for _, absent := range []string{"total", "total_complete"} {
+		if _, has := out[absent]; has {
+			t.Errorf("%s must be absent when the count failed (never a complete zero)", absent)
+		}
+	}
+	note, _ := out["note"].(string)
+	for _, want := range []string{"include_total", "count unavailable", "search backend unavailable", "page results are complete"} {
+		if !strings.Contains(note, want) {
+			t.Errorf("note missing %q: %q", want, note)
+		}
+	}
+
+	// 403 on the count keeps the access-denied wording inside the note.
+	api2 := setupProjectTest(t)
+	api2.Respond(resourcesPath, page(nil, ""))
+	api2.RespondStatus(countPath, http.StatusForbidden, `{"message":"forbidden"}`)
+	res2, _, _ := handleSearchProjects(context.Background(), stubCallToolRequest(), SearchProjectsArgs{IncludeTotal: true})
+	if res2.IsError || !strings.Contains(resultJSON(t, res2)["note"].(string), accessDeniedMessage) {
+		t.Errorf("count 403 should degrade with the access-denied wording in the note, got %q", allResultText(t, res2))
 	}
 }
 

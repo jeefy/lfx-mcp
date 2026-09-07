@@ -112,7 +112,7 @@ func TestParticipants_LegacyCallUnchangedExceptDedupe(t *testing.T) {
 	}, ""))
 
 	res, _, _ := handleSearchPastMeetingParticipants(context.Background(), stubCallToolRequest(), SearchPastMeetingParticipantsArgs{
-		ProjectUID: "a0941000002wBz4AAE", Name: "Ann", PageSize: 25,
+		ProjectUID: "a0941000002wBz4AAE", Name: "Ann", PageSize: 25, PageToken: "tok", Sort: "name_desc",
 	})
 	if res.IsError {
 		t.Fatalf("unexpected error: %s", allResultText(t, res))
@@ -124,8 +124,11 @@ func TestParticipants_LegacyCallUnchangedExceptDedupe(t *testing.T) {
 	r := reqs[0]
 	assertExchangedAuth(t, r)
 	if r.Path != resourcesPath || r.Query.Get("type") != "v1_past_meeting_participant" || r.Query.Get("parent") != "project:a0941000002wBz4AAE" ||
-		r.Query.Get("name") != "Ann" || r.Query.Get("page_size") != "25" || r.Query.Get("sort") != "name_asc" {
+		r.Query.Get("name") != "Ann" || r.Query.Get("page_size") != "25" || r.Query.Get("sort") != "name_desc" || r.Query.Get("page_token") != "tok" {
 		t.Errorf("legacy payload changed: %v", r.Query)
+	}
+	if _, has := r.Query["filters"]; has {
+		t.Errorf("legacy filters param must never be sent, got %v", r.Query["filters"])
 	}
 	if _, has := r.Query["tags"]; has {
 		t.Errorf("no tags expected without attended_only, got %v", r.Query["tags"])
@@ -504,5 +507,206 @@ func TestParticipants_PerPageDedupeIsDisclosed(t *testing.T) {
 	res, _, _ := handleSearchPastMeetingParticipants(context.Background(), stubCallToolRequest(), SearchPastMeetingParticipantsArgs{ProjectUID: "p", PageSize: 1})
 	if !strings.Contains(resultJSON(t, res)["note"].(string), "this page only") {
 		t.Errorf("a paged dedupe must say people/records are per page, got %v", resultJSON(t, res)["note"])
+	}
+}
+
+func TestParticipants_CountOnlyTruncatedMeetingsIsIncomplete(t *testing.T) {
+	// Step 1 hits max_meetings with a token left: the summed count is a lower bound.
+	api := setupParticipantTest(t)
+	api.Respond(resourcesPath, page([]string{pastMeetingDoc("m-1"), pastMeetingDoc("m-2"), pastMeetingDoc("m-3")}, "more"))
+	api.Respond(countPath, `{"count": 4, "has_more": false}`)
+	api.Respond(countPath, `{"count": 6, "has_more": false}`)
+	res, _, _ := handleSearchPastMeetingParticipants(context.Background(), stubCallToolRequest(), SearchPastMeetingParticipantsArgs{
+		ProjectUID: "p", DateFrom: "2026-01-01", MaxMeetings: 2, CountOnly: true,
+	})
+	out := resultJSON(t, res)
+	if out["count"] != float64(10) || out["complete"] != false {
+		t.Errorf("want count=10 complete=false, got %v", out)
+	}
+	if !strings.Contains(out["note"].(string), "max_meetings") || !strings.Contains(out["note"].(string), "lower bound") {
+		t.Errorf("note must explain both the truncation and the lower bound: %v", out["note"])
+	}
+	if n := len(api.RequestsTo(countPath)); n != 2 {
+		t.Errorf("expected exactly 2 count calls (the expanded meetings), got %d", n)
+	}
+}
+
+func TestParticipants_MaxMeetingsDefaultIs50(t *testing.T) {
+	api := setupParticipantTest(t)
+	docs := make([]string, participantDefaultMaxMeetings+1)
+	for i := range docs {
+		docs[i] = pastMeetingDoc(fmt.Sprintf("m-%d", i))
+	}
+	api.Respond(resourcesPath, page(docs, ""))
+	for i := 0; i < participantDefaultMaxMeetings; i++ {
+		api.Respond(resourcesPath, page(nil, ""))
+	}
+	res, _, _ := handleSearchPastMeetingParticipants(context.Background(), stubCallToolRequest(), SearchPastMeetingParticipantsArgs{ProjectUID: "p", DateFrom: "2026-01-01"})
+	out := resultJSON(t, res)
+	if out["meetings"] != float64(participantDefaultMaxMeetings) || out["truncated_meetings"] != true {
+		t.Errorf("default cap must be %d with truncation flagged, got %v", participantDefaultMaxMeetings, out)
+	}
+	if n := len(api.Requests()); n != participantDefaultMaxMeetings+1 {
+		t.Errorf("expected 1 meeting page + %d participant drains, got %d", participantDefaultMaxMeetings, n)
+	}
+}
+
+func TestParticipants_MaxMeetingsOnlyValidatedWithDateRange(t *testing.T) {
+	// Without a date range max_meetings is inert; a large value must not error.
+	api := setupParticipantTest(t)
+	api.Respond(resourcesPath, page(nil, ""))
+	res, _, _ := handleSearchPastMeetingParticipants(context.Background(), stubCallToolRequest(), SearchPastMeetingParticipantsArgs{ProjectUID: "p", MaxMeetings: 999})
+	if res.IsError {
+		t.Errorf("max_meetings must only be validated with a date range, got %s", allResultText(t, res))
+	}
+}
+
+func TestParticipants_PastMeetingIDFallsBackToResourceID(t *testing.T) {
+	api := setupParticipantTest(t)
+	noOcc := `{"type":"v1_past_meeting","id":"rid-1","data":{"title":"x","start_time":"2026-06-10T15:00:00Z"}}`
+	noID := `{"type":"v1_past_meeting","id":"","data":{"title":"y"}}`
+	api.Respond(resourcesPath, page([]string{noOcc, noID}, ""))
+	api.Respond(resourcesPath, page(nil, ""))
+	res, _, _ := handleSearchPastMeetingParticipants(context.Background(), stubCallToolRequest(), SearchPastMeetingParticipantsArgs{ProjectUID: "p", DateFrom: "2026-01-01"})
+	out := resultJSON(t, res)
+	if out["meetings"] != float64(1) {
+		t.Errorf("a meeting without meeting_and_occurrence_id must fall back to its id; one without either is skipped: %v", out["meetings"])
+	}
+	if reqs := api.RequestsTo(resourcesPath); len(reqs) != 2 || reqs[1].Query.Get("parent") != "past_meeting:rid-1" {
+		t.Errorf("step 2 must use the resource id as parent, got %+v", reqs)
+	}
+}
+
+func TestParticipants_DedupeEdgeShapes(t *testing.T) {
+	api := setupParticipantTest(t)
+	nonMap := `{"type":"v1_past_meeting_participant","id":"odd","data":"not-an-object"}`
+	blankA := `{"type":"v1_past_meeting_participant","id":"ba","data":{"uid":"","email":""}}`
+	blankB := `{"type":"v1_past_meeting_participant","id":"bb","data":{"uid":"","email":""}}`
+	api.Respond(resourcesPath, page([]string{nonMap, blankA, blankB}, ""))
+	res, _, _ := handleSearchPastMeetingParticipants(context.Background(), stubCallToolRequest(), SearchPastMeetingParticipantsArgs{ProjectUID: "p"})
+	out := resultJSON(t, res)
+	if out["records"] != float64(3) || out["people"] != float64(3) {
+		t.Errorf("non-object data and blank email+uid records must each survive as their own entry: %v", out)
+	}
+}
+
+func TestParticipants_RecordCapIsHonestAtExactBoundary(t *testing.T) {
+	// Exactly participantMaxRecords with no token and no further meetings: NOT truncated.
+	api := setupParticipantTest(t)
+	api.Respond(resourcesPath, page([]string{pastMeetingDoc("m-1")}, ""))
+	perPage := 100
+	for p := 0; p < participantMaxRecords/perPage; p++ {
+		docs := make([]string, perPage)
+		for i := range docs {
+			n := p*perPage + i
+			docs[i] = participantDoc(fmt.Sprintf("p%d", n), fmt.Sprintf("u%d@x.org", n), "U", fmt.Sprintf("%d", n), true, true, "")
+		}
+		token := fmt.Sprintf("t%d", p)
+		if p == participantMaxRecords/perPage-1 {
+			token = ""
+		}
+		api.Respond(resourcesPath, page(docs, token))
+	}
+	res, _, _ := handleSearchPastMeetingParticipants(context.Background(), stubCallToolRequest(), SearchPastMeetingParticipantsArgs{ProjectUID: "p", DateFrom: "2026-01-01"})
+	out := resultJSON(t, res)
+	if _, has := out["truncated_records"]; has {
+		t.Errorf("exactly the cap with nothing left is complete, got truncated_records=%v", out["truncated_records"])
+	}
+	if out["records"] != float64(participantMaxRecords) || out["meetings"] != float64(1) {
+		t.Errorf("want records=%d meetings=1, got %v %v", participantMaxRecords, out["records"], out["meetings"])
+	}
+	if note, _ := out["note"].(string); strings.Contains(note, "more than") {
+		t.Errorf("no cap note expected: %v", note)
+	}
+}
+
+func TestParticipants_RecordCapReportsDrainedMeetingsOnly(t *testing.T) {
+	// Cap hit on the first of three meetings: meetings=1, truncated_records=true.
+	api := setupParticipantTest(t)
+	api.Respond(resourcesPath, page([]string{pastMeetingDoc("m-1"), pastMeetingDoc("m-2"), pastMeetingDoc("m-3")}, ""))
+	perPage := 100
+	for p := 0; p < participantMaxRecords/perPage; p++ {
+		docs := make([]string, perPage)
+		for i := range docs {
+			n := p*perPage + i
+			docs[i] = participantDoc(fmt.Sprintf("p%d", n), fmt.Sprintf("u%d@x.org", n), "U", fmt.Sprintf("%d", n), true, true, "")
+		}
+		api.Respond(resourcesPath, page(docs, fmt.Sprintf("t%d", p)))
+	}
+	res, _, _ := handleSearchPastMeetingParticipants(context.Background(), stubCallToolRequest(), SearchPastMeetingParticipantsArgs{ProjectUID: "p", DateFrom: "2026-01-01"})
+	out := resultJSON(t, res)
+	if out["truncated_records"] != true || out["meetings"] != float64(1) {
+		t.Errorf("want truncated_records=true meetings=1 (only the drained meeting), got %v %v", out["truncated_records"], out["meetings"])
+	}
+}
+
+func TestParticipants_RequestBudgetBoundsFanOut(t *testing.T) {
+	// 200 meetings, each with 50 empty-with-token pages then an end: every
+	// per-meeting page cap is respected (50 < 200) yet the total would be
+	// 10,001 requests. The shared request budget must stop it as an error.
+	api := setupParticipantTest(t)
+	docs := make([]string, participantHardMaxMeetings)
+	for i := range docs {
+		docs[i] = pastMeetingDoc(fmt.Sprintf("m-%d", i))
+	}
+	api.Respond(resourcesPath, page(docs, ""))
+	const pagesPerMeeting = 50
+	for m := 0; m < participantHardMaxMeetings; m++ {
+		for p := 0; p < pagesPerMeeting; p++ {
+			token := fmt.Sprintf("m%d-t%d", m, p)
+			if p == pagesPerMeeting-1 {
+				token = ""
+			}
+			api.Respond(resourcesPath, page(nil, token))
+		}
+	}
+	res, _, _ := handleSearchPastMeetingParticipants(context.Background(), stubCallToolRequest(), SearchPastMeetingParticipantsArgs{ProjectUID: "p", DateFrom: "2026-01-01", MaxMeetings: participantHardMaxMeetings})
+	if !res.IsError || !strings.Contains(allResultText(t, res), "count_only") {
+		t.Errorf("expected a request-budget error naming count_only, got %q", allResultText(t, res))
+	}
+	if n := len(api.Requests()); n != participantMaxRequests {
+		t.Errorf("must stop at exactly %d upstream requests, made %d", participantMaxRequests, n)
+	}
+}
+
+func TestParticipants_UpstreamErrorsAreNeverBlank(t *testing.T) {
+	for _, tc := range []struct {
+		status int
+		body   string
+		want   string
+	}{
+		{http.StatusBadRequest, `{"message":"date_from must be ISO 8601"}`, "ISO 8601"},
+		{http.StatusInternalServerError, `{"message":"search backend unavailable"}`, "unavailable"},
+		{http.StatusServiceUnavailable, `{"message":"try again"}`, "try again"},
+	} {
+		api := setupParticipantTest(t)
+		api.RespondStatus(resourcesPath, tc.status, tc.body)
+		res, _, _ := handleSearchPastMeetingParticipants(context.Background(), stubCallToolRequest(), SearchPastMeetingParticipantsArgs{ProjectUID: "p"})
+		text := allResultText(t, res)
+		if !res.IsError || strings.TrimSpace(strings.TrimPrefix(text, "Failed to search past meeting participants:")) == "" {
+			t.Errorf("%d: blank error text: %q", tc.status, text)
+		}
+		if !strings.Contains(text, tc.want) {
+			t.Errorf("%d: upstream message %q missing from %q", tc.status, tc.want, text)
+		}
+	}
+}
+
+func TestTools1_MissingTokenFailsClosed(t *testing.T) {
+	// Every TOOLS-1 handler must refuse a sessionless/tokenless request before any upstream call.
+	req := stubCallToolRequest()
+	req.Extra.TokenInfo = nil
+
+	pAPI := setupParticipantTest(t)
+	if res, _, _ := handleSearchPastMeetingParticipants(context.Background(), req, SearchPastMeetingParticipantsArgs{ProjectUID: "p"}); !res.IsError || len(pAPI.Requests()) != 0 {
+		t.Error("participants: must fail closed without a token")
+	}
+	prAPI := setupProjectTest(t)
+	if res, _, _ := handleSearchProjects(context.Background(), req, SearchProjectsArgs{}); !res.IsError || len(prAPI.Requests()) != 0 {
+		t.Error("projects: must fail closed without a token")
+	}
+	sAPI := setupOrgSeatsTest(t)
+	if res, _, _ := handleGetOrgCommitteeSeats(context.Background(), req, GetOrgCommitteeSeatsArgs{OrgUID: testSFID}); !res.IsError || len(sAPI.Requests()) != 0 {
+		t.Error("org seats: must fail closed without a token")
 	}
 }

@@ -31,6 +31,26 @@ const participantMaxRecords = 5000
 // errDrainPageCap is returned when a page_token loop hits participantMaxDrainPages.
 var errDrainPageCap = fmt.Errorf("paging exceeded the %d-page cap; narrow the query", participantMaxDrainPages)
 
+// participantMaxRequests caps the query-service calls one tool invocation may
+// make on the date-range path (meeting pages + participant pages together).
+// Without it, max_meetings x per-meeting page cap allows 40k calls.
+const participantMaxRequests = 2000
+
+// errRequestBudget is returned when a date-range call exhausts participantMaxRequests.
+var errRequestBudget = fmt.Errorf("the date range needed more than %d query-service requests; narrow the range, add attended_only or org_name, or use count_only", participantMaxRequests)
+
+// requestBudget counts upstream calls across the steps of one tool call.
+type requestBudget struct{ remaining int }
+
+// take consumes one request; it returns errRequestBudget when none are left.
+func (b *requestBudget) take() error {
+	if b.remaining <= 0 {
+		return errRequestBudget
+	}
+	b.remaining--
+	return nil
+}
+
 // participantDefaultMaxMeetings caps the past meetings expanded by a date
 // range when max_meetings is not given.
 const participantDefaultMaxMeetings = 50
@@ -79,14 +99,15 @@ type participantRecord struct {
 
 // participantSearchResult is the output shape of search_past_meeting_participants.
 type participantSearchResult struct {
-	Resources         []*querysvc.Resource `json:"resources"`
-	PageToken         *string              `json:"page_token,omitempty"`
-	People            *int                 `json:"people,omitempty"`
-	Records           *int                 `json:"records,omitempty"`
-	Meetings          *int                 `json:"meetings,omitempty"`
-	TruncatedMeetings bool                 `json:"truncated_meetings,omitempty"`
-	TruncatedRecords  bool                 `json:"truncated_records,omitempty"`
-	Note              string               `json:"note,omitempty"`
+	Resources []*querysvc.Resource `json:"resources"`
+	PageToken *string              `json:"page_token,omitempty"`
+	People    *int                 `json:"people,omitempty"`
+	Records   *int                 `json:"records,omitempty"`
+	Meetings  *int                 `json:"meetings,omitempty"` // past meetings actually expanded
+
+	TruncatedMeetings bool   `json:"truncated_meetings,omitempty"`
+	TruncatedRecords  bool   `json:"truncated_records,omitempty"`
+	Note              string `json:"note,omitempty"`
 }
 
 // participantScope is the parent reference chosen from the three scope args.
@@ -118,13 +139,16 @@ func participantFilters(args SearchPastMeetingParticipantsArgs) (tags, filtersAl
 // resolvePastMeetingIDs runs step 1 of a date-ranged participant search: the
 // v1_past_meeting search on the same parent and start_time range, drained up
 // to maxMeetings. truncated reports that more meetings remained.
-func resolvePastMeetingIDs(ctx context.Context, clients *lfxv2.Clients, parent string, args SearchPastMeetingParticipantsArgs, maxMeetings int) (ids []string, truncated bool, err error) {
+func resolvePastMeetingIDs(ctx context.Context, clients *lfxv2.Clients, parent string, args SearchPastMeetingParticipantsArgs, maxMeetings int, budget *requestBudget) (ids []string, truncated bool, err error) {
 	resourceType := pastMeetingResourceType
 	dateField := "start_time"
 	var pageToken *string
 	for pages := 0; ; pages++ {
 		if pages >= participantMaxDrainPages {
 			return nil, false, errDrainPageCap
+		}
+		if err := budget.take(); err != nil {
+			return nil, false, err
 		}
 		payload := &querysvc.QueryResourcesPayload{
 			Version:   "1",
@@ -182,15 +206,18 @@ func pastMeetingOccurrenceID(r *querysvc.Resource) string {
 }
 
 // drainParticipants fetches pages of participants for one parent until the
-// pages run out or budget records have been collected (capped reports the
-// latter).
-func drainParticipants(ctx context.Context, clients *lfxv2.Clients, parent string, args SearchPastMeetingParticipantsArgs, sort string, budget int) (out []*querysvc.Resource, capped bool, err error) {
+// pages run out or recordBudget records have been collected. capped reports
+// that records were left behind (more than the budget, or a token remained).
+func drainParticipants(ctx context.Context, clients *lfxv2.Clients, parent string, args SearchPastMeetingParticipantsArgs, sort string, recordBudget int, budget *requestBudget) (out []*querysvc.Resource, capped bool, err error) {
 	resourceType := pastMeetingParticipantResourceType
 	tags, filtersAll := participantFilters(args)
 	var pageToken *string
 	for pages := 0; ; pages++ {
 		if pages >= participantMaxDrainPages {
 			return nil, false, errDrainPageCap
+		}
+		if err := budget.take(); err != nil {
+			return nil, false, err
 		}
 		payload := &querysvc.QueryResourcesPayload{
 			Version:    "1",
@@ -210,8 +237,8 @@ func drainParticipants(ctx context.Context, clients *lfxv2.Clients, parent strin
 			return nil, false, err
 		}
 		out = append(out, result.Resources...)
-		if len(out) >= budget {
-			return out[:budget], len(out) > budget || (result.PageToken != nil && *result.PageToken != ""), nil
+		if len(out) >= recordBudget {
+			return out[:recordBudget], len(out) > recordBudget || (result.PageToken != nil && *result.PageToken != ""), nil
 		}
 		if result.PageToken == nil || *result.PageToken == "" {
 			return out, false, nil
@@ -365,7 +392,7 @@ func handleSearchPastMeetingParticipants(ctx context.Context, req *mcp.CallToolR
 	if maxMeetings <= 0 {
 		maxMeetings = participantDefaultMaxMeetings
 	}
-	if maxMeetings > participantHardMaxMeetings {
+	if hasDateRange && maxMeetings > participantHardMaxMeetings {
 		return errorResult(fmt.Sprintf("Error: max_meetings must be at most %d", participantHardMaxMeetings)), nil, nil
 	}
 
@@ -407,8 +434,9 @@ func handleSearchPastMeetingParticipants(ctx context.Context, req *mcp.CallToolR
 	// Step 1 (date range only): resolve the past meetings in range.
 	var parents []string
 	truncated := false
+	budget := &requestBudget{remaining: participantMaxRequests}
 	if hasDateRange {
-		ids, trunc, err := resolvePastMeetingIDs(ctx, clients, parent, args, maxMeetings)
+		ids, trunc, err := resolvePastMeetingIDs(ctx, clients, parent, args, maxMeetings, budget)
 		if err != nil {
 			logger.ErrorContext(ctx, "past meeting resolution failed", "error", err)
 			return errorResult(friendlyAPIError("failed to resolve past meetings for the date range", err)), nil, nil
@@ -457,20 +485,28 @@ func handleSearchPastMeetingParticipants(ctx context.Context, req *mcp.CallToolR
 
 	if hasDateRange {
 		var all []*querysvc.Resource
-		for _, p := range parents {
-			rs, capped, err := drainParticipants(ctx, clients, p, args, sort, participantMaxRecords-len(all))
+		drained := 0
+		for i, p := range parents {
+			rs, capped, err := drainParticipants(ctx, clients, p, args, sort, participantMaxRecords-len(all), budget)
 			if err != nil {
 				logger.ErrorContext(ctx, "QueryResources failed", "error", err)
 				return errorResult(friendlyAPIError("failed to search past meeting participants", err)), nil, nil
 			}
 			all = append(all, rs...)
-			if capped || len(all) >= participantMaxRecords {
+			drained = i + 1
+			// Records were left behind only if this meeting had more, or
+			// later meetings were never queried.
+			if capped || (len(all) >= participantMaxRecords && i < len(parents)-1) {
 				out.TruncatedRecords = true
 				break
 			}
+			if len(all) >= participantMaxRecords {
+				break
+			}
 		}
-		n := len(parents)
-		out.Meetings = &n
+		// meetings = past meetings actually expanded (equals the resolved
+		// count unless the record cap stopped the drain early).
+		out.Meetings = &drained
 		out.TruncatedMeetings = truncated
 		out.Resources = all
 	} else {

@@ -248,3 +248,26 @@ func countTypeTag(t *testing.T) string {
 	desc, _ := typ["description"].(string)
 	return desc
 }
+
+func TestCountLFXResources_UpstreamErrorsAreNeverBlank(t *testing.T) {
+	for _, tc := range []struct {
+		status int
+		body   string
+		want   string
+	}{
+		{http.StatusBadRequest, `{"message":"invalid date_from"}`, "invalid date_from"},
+		{http.StatusInternalServerError, `{"message":"search backend unavailable"}`, "unavailable"},
+		{http.StatusServiceUnavailable, `{"message":"try again"}`, "try again"},
+	} {
+		api := setupCountTest(t)
+		api.RespondStatus(countPath, tc.status, tc.body)
+		res, _, _ := handleCountLFXResources(context.Background(), stubCallToolRequest(), CountLFXResourcesArgs{Type: "project"})
+		text := allResultText(t, res)
+		if !res.IsError || strings.TrimSpace(strings.TrimPrefix(text, "Failed to count resources:")) == "" {
+			t.Errorf("%d: blank error text: %q", tc.status, text)
+		}
+		if !strings.Contains(text, tc.want) {
+			t.Errorf("%d: upstream message %q missing from %q", tc.status, tc.want, text)
+		}
+	}
+}

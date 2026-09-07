@@ -67,7 +67,7 @@ func RegisterCountLFXResources(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "count_lfx_resources",
 		Description: "Count LFX resources of one type via the query service, over the records visible to the caller. " +
-			"Accepts the same filters as the search tools: parent (project:<uid>, committee:<uid>, past_meeting:<meeting_and_occurrence_id>), " +
+			"Accepts the same filters as the search tools: parent (project:<uid>, committee:<uid>, past_meeting:<meeting_and_occurrence_id>), name (typeahead), " +
 			"tags OR / tags_all AND (is_attended:true, project_slug:cncf), an inclusive date range on a data field (date_field=start_time date_from=2026-01-01 date_to=2026-06-30), " +
 			"and exact stored-value filters_all (all must match) / filters_or (at least one must match), e.g. org_name:<stored value>. " +
 			"Returns {count, complete, visibility, note}; complete=false means the count is a lower bound and the query should be narrowed. " +

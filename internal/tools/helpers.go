@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 
 	"github.com/linuxfoundation/lfx-mcp/internal/lfxv2"
@@ -117,16 +118,84 @@ func slugResolveError(slug string, err error) error {
 	return fmt.Errorf("failed to resolve project slug %q: %w", slug, err)
 }
 
+// goaTypedError is the shape shared by the Goa-generated typed errors
+// (BadRequestError, NotFoundError, InternalServerError, ServiceUnavailableError
+// in every vendored lfx-v2-* client). Their Error() method returns "", so the
+// message has to be read through GoaErrorName and the Message field.
+type goaTypedError interface {
+	error
+	GoaErrorName() string
+}
+
+// upstreamErrorText returns a non-blank description of err. For Goa typed
+// errors, whose Error() is "", it reads the Message field by reflection-free
+// means (fmt on the struct) and prefixes the Goa error name, e.g.
+// "BadRequest: date_from must be ISO 8601". Other errors return Error().
+func upstreamErrorText(err error) string {
+	if err == nil {
+		return ""
+	}
+	text := err.Error()
+	var typed goaTypedError
+	if errors.As(err, &typed) {
+		detail := typed.GoaErrorName()
+		if msg := goaMessage(typed); msg != "" {
+			detail += ": " + msg
+		}
+		// Wrapping ("outer: %w") leaves a dangling prefix because the inner
+		// Error() is ""; append the typed detail so it is never lost.
+		text = strings.TrimSpace(text)
+		if text == "" || text == ":" {
+			return detail
+		}
+		return strings.TrimSuffix(text, ":") + ": " + detail
+	}
+	if text == "" {
+		return "upstream request failed with no message"
+	}
+	return text
+}
+
+// goaMessage extracts the Message field from a Goa typed error without
+// importing every client's error type. All of them are `struct{ Message string }`.
+func goaMessage(e goaTypedError) string {
+	type messenger interface{ GetMessage() string }
+	if m, ok := e.(messenger); ok {
+		return m.GetMessage()
+	}
+	// Goa does not generate a getter; the struct is `struct{ Message string }`.
+	// %v/%+v would call the blank Error(), so use %#v, which renders
+	// `&pkg.Type{Message:"<text>"}`, and unquote the field.
+	s := fmt.Sprintf("%#v", e)
+	const key = `Message:"`
+	i := strings.Index(s, key)
+	if i < 0 {
+		return ""
+	}
+	rest := s[i+len(key):]
+	if j := strings.LastIndex(rest, `"}`); j >= 0 {
+		rest = rest[:j]
+	}
+	unquoted, err := strconv.Unquote(`"` + rest + `"`)
+	if err != nil {
+		return rest
+	}
+	return unquoted
+}
+
 // If the error contains "response code 403" it returns a user-friendly
 // access-denied message instead of the raw internal error string.
 // The op argument is a short description of the operation (e.g.
 // "failed to get project") and is prefixed to both 403 and non-403 error messages.
+// Goa typed errors, whose Error() is blank, are rendered through
+// upstreamErrorText so the caller never sees an empty message.
 func friendlyAPIError(op string, err error) string {
 	if len(op) > 0 {
 		op = strings.ToUpper(op[:1]) + op[1:]
 	}
-	if strings.Contains(err.Error(), "response code 403") {
+	text := upstreamErrorText(err)
+	if strings.Contains(text, "response code 403") {
 		return op + ": " + accessDeniedMessage
 	}
-	return op + ": " + err.Error()
+	return op + ": " + text
 }

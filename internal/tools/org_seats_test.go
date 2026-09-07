@@ -310,3 +310,49 @@ func TestOrgSeats_FamilyResolutionIsCapped(t *testing.T) {
 		t.Error("seats must not be fetched after a capped family resolution")
 	}
 }
+
+func TestOrgSeats_ByProjectFallbacksAndRowOrder(t *testing.T) {
+	api := setupOrgSeatsTest(t)
+	// Same committee + last name twice to exercise the first-name/e-mail tie-breakers;
+	// one seat with no project_slug (keyed by uid) and one with neither (keyed "(none)").
+	noSlug := strings.Replace(seatDoc("s20", "c-x", "Zed Committee", "Technical", "p-only-uid", "", "Bea", "Same", "bea@x.org", "None", true), `"project_slug": "",`, "", 1)
+	noProject := strings.Replace(strings.Replace(seatDoc("s21", "c-x", "Zed Committee", "Technical", "p-none", "", "Abe", "Same", "abe@x.org", "None", true), `"project_slug": "",`, "", 1), fmt.Sprintf(`"project_uid": %q,`, uuidFor("p-none")), "", 1)
+	api.Respond(seatsPath, seatsPage([]string{noSlug, noProject}, ""))
+	res, _, _ := handleGetOrgCommitteeSeats(context.Background(), stubCallToolRequest(), GetOrgCommitteeSeatsArgs{OrgUID: testSFID, IncludeSeats: true})
+	if res.IsError {
+		t.Fatalf("unexpected error: %s", allResultText(t, res))
+	}
+	out := resultJSON(t, res)
+	byProject := out["by_project"].(map[string]any)
+	if byProject[uuidFor("p-only-uid")] != float64(1) || byProject["(none)"] != float64(1) {
+		t.Errorf("by_project must fall back to project_uid then \"(none)\": %v", byProject)
+	}
+	rows := out["seats"].([]any)
+	first, second := rows[0].(map[string]any), rows[1].(map[string]any)
+	if first["first_name"] != "Abe" || second["first_name"] != "Bea" {
+		t.Errorf("rows with equal committee and last name must order by first name: %v, %v", first["first_name"], second["first_name"])
+	}
+}
+
+func TestOrgSeats_UpstreamErrorsAreNeverBlank(t *testing.T) {
+	for _, tc := range []struct {
+		status int
+		body   string
+		want   string
+	}{
+		{http.StatusBadRequest, `{"message":"page_size out of range"}`, "page_size"},
+		{http.StatusInternalServerError, `{"message":"kv unavailable"}`, "kv unavailable"},
+		{http.StatusServiceUnavailable, `{"message":"try again"}`, "try again"},
+	} {
+		api := setupOrgSeatsTest(t)
+		api.RespondStatus(seatsPath, tc.status, tc.body)
+		res, _, _ := handleGetOrgCommitteeSeats(context.Background(), stubCallToolRequest(), GetOrgCommitteeSeatsArgs{OrgUID: testSFID})
+		text := allResultText(t, res)
+		if !res.IsError || strings.TrimSpace(strings.TrimPrefix(text, "Failed to get organization committee seats:")) == "" {
+			t.Errorf("%d: blank error text: %q", tc.status, text)
+		}
+		if !strings.Contains(text, tc.want) {
+			t.Errorf("%d: upstream message %q missing from %q", tc.status, tc.want, text)
+		}
+	}
+}

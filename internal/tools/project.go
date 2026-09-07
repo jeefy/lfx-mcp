@@ -38,6 +38,7 @@ type projectSearchResult struct {
 	PageToken     *string              `json:"page_token,omitempty"`
 	Total         *uint64              `json:"total,omitempty"`
 	TotalComplete *bool                `json:"total_complete,omitempty"`
+	Note          string               `json:"note,omitempty"`
 }
 
 // projectGetResult is the output type for the get_project tool.
@@ -186,18 +187,16 @@ func handleSearchProjects(ctx context.Context, req *mcp.CallToolRequest, args Se
 			FiltersAll: payload.FiltersAll,
 		})
 		if err != nil {
+			// The page itself succeeded; degrade rather than discard it. Total
+			// and total_complete stay absent so nothing reads as a complete zero.
 			logger.ErrorContext(ctx, "QueryResourcesCount failed", "error", err)
-			return &mcp.CallToolResult{
-				Content: []mcp.Content{
-					&mcp.TextContent{Text: friendlyAPIError("failed to count projects", err)},
-				},
-				IsError: true,
-			}, projectSearchResult{}, nil
+			out.Note = friendlyAPIError("include_total: count unavailable", err) + "; the page results are complete. Retry without include_total or page to the end."
+		} else {
+			total := countResult.Count
+			complete := !countResult.HasMore
+			out.Total = &total
+			out.TotalComplete = &complete
 		}
-		total := countResult.Count
-		complete := !countResult.HasMore
-		out.Total = &total
-		out.TotalComplete = &complete
 	}
 
 	prettyJSON, err := json.MarshalIndent(out, "", "  ")

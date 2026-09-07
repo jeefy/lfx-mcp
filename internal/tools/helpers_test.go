@@ -13,6 +13,8 @@ import (
 	"testing"
 
 	"github.com/linuxfoundation/lfx-mcp/internal/lfxv2"
+	committeeservice "github.com/linuxfoundation/lfx-v2-committee-service/gen/committee_service"
+	querysvc "github.com/linuxfoundation/lfx-v2-query-service/gen/query_svc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -130,5 +132,38 @@ func TestNewToolLogger_NilSessionUsesServerHandlerOnly(t *testing.T) {
 				t.Errorf("record did not reach the server-side handler: %q", buf.String())
 			}
 		})
+	}
+}
+
+// TestFriendlyAPIError_GoaTypedErrorsAreNotBlank pins that the Goa-generated
+// typed errors (whose Error() returns "") reach the caller with their name and
+// message instead of a bare "<Op>: ".
+func TestFriendlyAPIError_GoaTypedErrorsAreNotBlank(t *testing.T) {
+	for name, err := range map[string]error{
+		"query bad request":   &querysvc.BadRequestError{Message: "date_from must be ISO 8601"},
+		"query internal":      &querysvc.InternalServerError{Message: "search backend unavailable"},
+		"committee not found": &committeeservice.NotFoundError{Message: "organization not found"},
+		"committee 503":       &committeeservice.ServiceUnavailableError{Message: "try again"},
+		"wrapped":             fmt.Errorf("outer: %w", &querysvc.BadRequestError{Message: "bad parent"}),
+	} {
+		t.Run(name, func(t *testing.T) {
+			got := friendlyAPIError("failed to count resources", err)
+			if got == "Failed to count resources: " || !strings.HasPrefix(got, "Failed to count resources: ") {
+				t.Fatalf("blank or malformed message: %q", got)
+			}
+			body := strings.TrimPrefix(got, "Failed to count resources: ")
+			if !strings.Contains(body, "Error") && !strings.Contains(body, "BadRequest") && !strings.Contains(body, "NotFound") && !strings.Contains(body, "Internal") && !strings.Contains(body, "ServiceUnavailable") {
+				t.Errorf("Goa error name missing: %q", got)
+			}
+			for _, want := range []string{"ISO 8601", "unavailable", "not found", "try again", "bad parent"} {
+				if strings.Contains(fmt.Sprintf("%+v", err), want) && !strings.Contains(got, want) {
+					t.Errorf("upstream message %q missing from %q", want, got)
+				}
+			}
+		})
+	}
+	// A blank non-Goa error still yields a non-blank sentence.
+	if got := friendlyAPIError("failed to x", errors.New("")); got == "Failed to x: " {
+		t.Errorf("blank error must not yield a blank message, got %q", got)
 	}
 }
