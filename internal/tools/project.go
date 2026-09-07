@@ -48,7 +48,7 @@ type projectGetResult struct {
 func RegisterSearchProjects(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "search_projects",
-		Description: "Search for LFX projects by name or by parent project UID using the LFX query service. The Linux Foundation's own entry (slug tlf) is one project bucket, not the LF-wide scope: LF-wide questions take no project on the query tools.",
+		Description: "Search for LFX projects by name or by parent project UID using the LFX query service. The Linux Foundation's own entry (slug tlf) is one project bucket, not the LF-wide scope: LF-wide questions take no project on the query tools, except query_lfx_lens, whose project_slug is a required context field and takes tlf for LF-wide.",
 		Annotations: &mcp.ToolAnnotations{
 			Title:        "Search Projects",
 			ReadOnlyHint: true,

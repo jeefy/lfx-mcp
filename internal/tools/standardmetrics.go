@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -165,6 +166,25 @@ func standardMetricResult(body []byte) (*mcp.CallToolResult, any, error) {
 	if err := json.Unmarshal(rawRows, &rows); err != nil {
 		return lensPrettyJSON(body)
 	}
+	// Every member but data, pretty-printed one by one in a stable order, then
+	// data as compact rows; assembled member by member so the object is valid
+	// JSON whatever else the body carries (including nothing but data).
+	keys := make([]string, 0, len(top))
+	for k := range top {
+		if k != "data" {
+			keys = append(keys, k)
+		}
+	}
+	sort.Strings(keys)
+	members := make([]string, 0, len(keys)+1)
+	for _, k := range keys {
+		var buf bytes.Buffer
+		if err := json.Indent(&buf, top[k], "  ", "  "); err != nil {
+			return lensPrettyJSON(body)
+		}
+		name, _ := json.Marshal(k)
+		members = append(members, "  "+string(name)+": "+buf.String())
+	}
 	compact := make([]string, 0, len(rows))
 	for _, row := range rows {
 		var buf bytes.Buffer
@@ -173,18 +193,12 @@ func standardMetricResult(body []byte) (*mcp.CallToolResult, any, error) {
 		}
 		compact = append(compact, "    "+buf.String())
 	}
-	delete(top, "data")
-	rest, err := json.MarshalIndent(top, "", "  ")
-	if err != nil {
-		return lensPrettyJSON(body)
+	data := "  \"data\": []"
+	if len(compact) > 0 {
+		data = "  \"data\": [\n" + strings.Join(compact, ",\n") + "\n  ]"
 	}
-	// Splice the compact rows back in as the last member, so the object stays
-	// valid JSON and reads scalar members, applied, then the rows.
-	text := strings.TrimSuffix(string(rest), "\n}")
-	if text != "{" {
-		text += ","
-	}
-	text += "\n  \"data\": [\n" + strings.Join(compact, ",\n") + "\n  ]\n}"
+	members = append(members, data)
+	text := "{\n" + strings.Join(members, ",\n") + "\n}"
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{&mcp.TextContent{Text: text}},
 	}, nil, nil

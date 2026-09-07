@@ -441,9 +441,11 @@ func TestStandardMetrics_RendersGuardCandidates(t *testing.T) {
 	}
 }
 
-// A parameter the contract does not know (since, until, as_of, a typo) is a
-// 422 whose detail is a LIST of validation errors; the message inside names
-// the word to use, and that is what the model must read.
+// A 422 from the lens carries a LIST of validation errors (a bad date, a
+// limit below one, a wrong fold word); the message inside names the rule and
+// the fix, and that is what the model must read. The legacy names since /
+// until / as_of never reach the lens from this tool: the SDK rejects them at
+// the schema (see TestStandardMetrics_LegacyNamesAreRejectedAtTheSchema).
 func TestStandardMetrics_RendersValidationErrors(t *testing.T) {
 	setupLensErrorTest(t, http.StatusUnprocessableEntity, `{"detail":[{"type":"value_error","loc":["body"],"msg":"Value error, since is now start_date. Every family takes start_date, end_date and period."}]}`)
 
@@ -607,9 +609,65 @@ func TestStandardMetricResultRendersCompactRows(t *testing.T) {
 	if !strings.Contains(text, "\"applied\": {\n    \"metric\": \"memberships\"") {
 		t.Errorf("applied is no longer pretty-printed:\n%s", text)
 	}
+	// the edge shapes: data as the only member, and an empty breakdown
+	for _, edge := range []string{`{"data":[{"a":1}]}`, `{"columns":["a"],"data":[],"row_count":0,"applied":{}}`} {
+		res, _, _ := standardMetricResult([]byte(edge))
+		var v map[string]any
+		if err := json.Unmarshal([]byte(resultText(t, res)), &v); err != nil {
+			t.Errorf("edge %s rendered invalid JSON: %v\n%s", edge, err, resultText(t, res))
+		}
+	}
 	// a body without data (an error object) falls back to the plain pretty print
 	res, _, _ = standardMetricResult([]byte(`{"detail":"x"}`))
 	if got := resultText(t, res); got != "{\n  \"detail\": \"x\"\n}" {
 		t.Errorf("fallback rendering changed: %q", got)
+	}
+}
+
+// TestStandardMetrics_LegacyNamesAreRejectedAtTheSchema pins where since,
+// until and as_of are refused: the typed args struct carries none of them, the
+// SDK derives a closed schema from it and validates a call before the handler
+// runs, so a caller gets the SDK's "unexpected additional properties" naming
+// the field. The guidance's Errors section says exactly that (rejected by the
+// request schema); the replacement words are in the description and the
+// contract table, not in a lens message this path never produces.
+func TestStandardMetrics_LegacyNamesAreRejectedAtTheSchema(t *testing.T) {
+	server := mcp.NewServer(&mcp.Implementation{Name: "probe", Version: "0"}, nil)
+	RegisterStandardMetrics(server)
+	ct, st := mcp.NewInMemoryTransports()
+	ss, err := server.Connect(context.Background(), st, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ss.Close()
+	client := mcp.NewClient(&mcp.Implementation{Name: "c", Version: "0"}, nil)
+	cs, err := client.Connect(context.Background(), ct, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cs.Close()
+	for _, legacy := range []string{"since", "until", "as_of"} {
+		res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+			Name:      "query_lfx_standard_metrics",
+			Arguments: map[string]any{"metric": "memberships", legacy: "2024-01-01"},
+		})
+		if err != nil {
+			t.Fatalf("%s: transport error: %v", legacy, err)
+		}
+		if !res.IsError {
+			t.Errorf("%s reached the handler; the schema should have refused it", legacy)
+			continue
+		}
+		if text := resultText(t, res); !strings.Contains(text, legacy) || !strings.Contains(text, "additional properties") {
+			t.Errorf("%s: rejection does not name the field: %q", legacy, text)
+		}
+	}
+	// the replacement words are in the schema a caller reads before calling
+	tool := listRegisteredTool(t, "query_lfx_standard_metrics", RegisterStandardMetrics)
+	schema, _ := json.Marshal(tool.InputSchema)
+	for _, want := range []string{`"start_date"`, `"end_date"`, `"period"`} {
+		if !strings.Contains(string(schema), want) {
+			t.Errorf("input schema does not name %s", want)
+		}
 	}
 }
