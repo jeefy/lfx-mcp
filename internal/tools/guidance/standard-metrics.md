@@ -153,7 +153,10 @@ family's default window or a bare period series rather than a hand-picked
 start_date: a computed start clips the first period. Do not compute a
 start_date by counting back N years from today for "last N years": that
 arithmetic is the mistake the rule exists to prevent; a bare period=year
-series returns every year and the reader picks.
+series returns every year and the reader picks. The same discipline applies
+to the answer: report every row the series returned, or say how many rows
+there are and which ones you show; do not trim the table to a rounder
+window when writing up.
 
 Every result carries an `applied` block: metric, by, kind (window or
 at-date), project, subprojects, org, subsidiaries, start_date, end_date,

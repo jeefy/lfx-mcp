@@ -406,6 +406,8 @@ func TestStandardMetricsGuidanceContent(t *testing.T) {
 		"if a\nsibling with a '-fund' slug is there, the memberships sit on it",
 		"stating the stored spelling here does not exempt\nit: k8s, cncf and tlf still come back from search_projects in-session",
 		"Do not compute a\nstart_date by counting back N years from today",
+		"report every row the series returned, or say how many rows\nthere are and which ones you show",
+		"do not trim the table to a rounder\nwindow when writing up",
 		"check the by=org rows for BOTH names before finalizing a table",
 		"never silently dropped",
 		"Decide the lens query's\n  scope before issuing it, not after seeing the result",
