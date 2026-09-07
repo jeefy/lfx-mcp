@@ -205,12 +205,11 @@ func TestSearchProjectsDescriptionMentionsEachNewParameter(t *testing.T) {
 		}
 	}
 
-	// Keep the main-branch scope contract verbatim. Its approved "because"
-	// explains the required Lens parameter; the rationale ban applies to
-	// TOOLS-1's parameter text, not to this inherited contract sentence.
-	const scopeContract = " The Linux Foundation's own entry (slug tlf) is one project bucket, not the LF-wide scope: LF-wide questions take no project on the query tools; query_lfx_lens is the exception only because its project_slug is required — pass tlf there as context and say LF-wide in the input; the lens reads the scope from the input, not from the slug."
+	// Keep the SM-2 optional project scope contract verbatim, after the
+	// TOOLS-1 parameter documentation.
+	const scopeContract = " The Linux Foundation's own entry (slug tlf) is one project bucket, not the LF-wide scope. LF-wide questions take no project on the query tools, query_lfx_lens included (omit project_slugs); pass project_slugs only to restrict to named projects."
 	if !strings.HasSuffix(tool.Description, scopeContract) {
-		t.Error("description must retain the main-branch LF-wide/tlf contract verbatim")
+		t.Error("description must retain the SM-2 LF-wide/tlf contract verbatim")
 	}
 	if strings.Contains(strings.TrimSuffix(tool.Description, scopeContract), "because") {
 		t.Error("TOOLS-1 parameter description must not contain rationale")
