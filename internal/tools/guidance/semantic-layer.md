@@ -207,9 +207,16 @@ and the two vocabularies never mix in one answer.
 ({{ Dimension('health_metric_key__health_score_category_v2') }} IS NOT NULL),
 filter to it, then aggregate; unfiltered grouping inflates ~8-9x. Categories
 are the stored v2 band names (Excellent, Healthy, Fair, Concerning, Critical):
-group by them, never by a threshold. Once allowlisted, current_project_health_count,
+group by them, never by a threshold; the v2 category can be NULL on a scored
+row, so scored projects are counted on the score, never on the label. For
+"current" or "today" health with no date, current_project_health_count,
 current_avg_health_score and current_software_value (on
-silver_fact_project_health_latest) answer current-state questions without a pin.
+silver_fact_project_health_latest) read each project's own latest snapshot
+without a pin — and they read the WHOLE population, LF-hosted plus the
+open-source index, unless filtered on
+project_health_latest_id__is_lf_project or
+project_health_latest_id__foundation_slug; a bare current_* figure is never
+"LF project health". Any dated question stays on the daily fact with the pin.
 
 9. ECONOMIC VALUE = total_software_value / total_estimated_cost (COCOMO): non-additive
 daily snapshots; totals can read low, never inflated.
@@ -302,9 +309,11 @@ floor — present "attributed registrations/enrollments" and say so.
 by, project + subprojects (excluded|separate|combined, default combined), org
 + subsidiaries (excluded|separate|combined, default excluded), start_date,
 end_date, period (day|week|month|quarter|year), order_by, limit; there is no
-since, until or as_of. The families: memberships, new_members,
-membership_churn, contributors, contributions, contributing_organizations,
-participants, maintainers, maintainer_contributions, project_health,
+since, until or as_of. The families: memberships, member_organizations,
+new_members, new_member_organizations, lost_member_organizations,
+paying_member_organizations, membership_churn, contributors, contributions,
+contributing_organizations, participants, maintainers,
+maintainer_contributions, project_health,
 software_value, event_registrations, event_sponsorships, speakers,
 training_enrollments, certifications, social_mentions, social_reach; their
 groupings (by) are in read_lfx_standard_metrics_guidance. by left out is the
@@ -313,8 +322,9 @@ that company's projects; by=org with project = that project's companies).
 period adds a time dimension to by: by=org with period=month is one row per
 organization per month; without period the by grouping remains.
 Two kinds: a WINDOW family counts between start_date and end_date;
-an AT-DATE family (memberships, maintainers,
-project_health, software_value) reports the state on end_date, and with
+an AT-DATE family (memberships, member_organizations,
+paying_member_organizations, maintainers, project_health, software_value)
+reports the state on end_date, and with
 period the state at each period end. maintainers is the exception: today's
 roster only; with period, one row per period of today's maintainers active
 in it, not the roster at that time. "Members at the end of 2022" and

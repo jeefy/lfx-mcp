@@ -46,12 +46,16 @@ var standardMetricParameters = []string{
 }
 
 // standardMetricNames is the whole inventory, in the order the guidance lists
-// it: the lens registry exposes exactly these eighteen families (each with
+// it: the lens registry exposes exactly these twenty-two families (each with
 // its own groupings under by), so this list is what the routing surface must
 // name — no more, and none of them missing.
 var standardMetricNames = []string{
 	"memberships",
+	"member_organizations",
 	"new_members",
+	"new_member_organizations",
+	"lost_member_organizations",
+	"paying_member_organizations",
 	"membership_churn",
 	"contributors",
 	"contributions",
@@ -72,27 +76,31 @@ var standardMetricNames = []string{
 
 // standardMetricKinds is each family's kind as the guidance lists it: a
 // window family counts between start_date and end_date, an at-date family
-// reports the state on end_date. The four at-date families are also named
+// reports the state on end_date. The six at-date families are also named
 // on the required metric parameter, where they survive schema compaction.
 var standardMetricKinds = map[string]string{
-	"memberships":                "at-date",
-	"new_members":                "window",
-	"membership_churn":           "window",
-	"contributors":               "window",
-	"contributions":              "window",
-	"contributing_organizations": "window",
-	"participants":               "window",
-	"maintainers":                "at-date",
-	"maintainer_contributions":   "window",
-	"project_health":             "at-date",
-	"software_value":             "at-date",
-	"event_registrations":        "window",
-	"event_sponsorships":         "window",
-	"speakers":                   "window",
-	"training_enrollments":       "window",
-	"certifications":             "window",
-	"social_mentions":            "window",
-	"social_reach":               "window",
+	"memberships":                 "at-date",
+	"member_organizations":        "at-date",
+	"new_members":                 "window",
+	"new_member_organizations":    "window",
+	"lost_member_organizations":   "window",
+	"paying_member_organizations": "at-date",
+	"membership_churn":            "window",
+	"contributors":                "window",
+	"contributions":               "window",
+	"contributing_organizations":  "window",
+	"participants":                "window",
+	"maintainers":                 "at-date",
+	"maintainer_contributions":    "window",
+	"project_health":              "at-date",
+	"software_value":              "at-date",
+	"event_registrations":         "window",
+	"event_sponsorships":          "window",
+	"speakers":                    "window",
+	"training_enrollments":        "window",
+	"certifications":              "window",
+	"social_mentions":             "window",
+	"social_reach":                "window",
 }
 
 // standardMetricGroupings is each family's groupings as the GUIDANCE lists
@@ -101,24 +109,28 @@ var standardMetricKinds = map[string]string{
 // TestStandardMetricsGuidanceContent derives the inventory rows from this
 // map, so it is the single source.
 var standardMetricGroupings = map[string]string{
-	"memberships":                "total, org, tier, project, country, region",
-	"new_members":                "total, org, project",
-	"membership_churn":           "total, org, project",
-	"contributors":               "total, org, project, country, region",
-	"contributions":              "total, org, project, contributor, type, platform, org_region",
-	"contributing_organizations": "total, project",
-	"participants":               "total, org, project",
-	"maintainers":                "total, org, project, maintainer",
-	"maintainer_contributions":   "total, org, project, maintainer",
-	"project_health":             "total, foundation, category, population",
-	"software_value":             "total, foundation, population",
-	"event_registrations":        "total, event, org",
-	"event_sponsorships":         "total, org, event",
-	"speakers":                   "total, event",
-	"training_enrollments":       "total, org, course",
-	"certifications":             "total, org",
-	"social_mentions":            "total, project, network, sentiment",
-	"social_reach":               "total, project",
+	"memberships":                 "total, org, tier, project, country, region",
+	"member_organizations":        "total, project, foundation, country, region",
+	"new_members":                 "total, org, project",
+	"new_member_organizations":    "total, project, foundation, country, region",
+	"lost_member_organizations":   "total, project, foundation, country, region",
+	"paying_member_organizations": "total, project, foundation, country, region",
+	"membership_churn":            "total, org, project",
+	"contributors":                "total, org, project, country, region",
+	"contributions":               "total, org, project, contributor, type, platform, org_region",
+	"contributing_organizations":  "total, project",
+	"participants":                "total, org, project",
+	"maintainers":                 "total, org, project, maintainer",
+	"maintainer_contributions":    "total, org, project, maintainer",
+	"project_health":              "total, foundation, category, population",
+	"software_value":              "total, foundation, population",
+	"event_registrations":         "total, event, org",
+	"event_sponsorships":          "total, org, event",
+	"speakers":                    "total, event",
+	"training_enrollments":        "total, org, course",
+	"certifications":              "total, org",
+	"social_mentions":             "total, project, network, sentiment",
+	"social_reach":                "total, project",
 }
 
 // TestStandardMetricsDescription_FitsSchemaBudget holds the tool to the same budget as
@@ -175,7 +187,7 @@ func TestStandardMetricsDescription_OnlyRoutes(t *testing.T) {
 		"applied scope echoed",
 		"STANDARD METRICS ",
 		"Read read_lfx_standard_metrics_guidance BEFORE the first call",
-		"again whenever in doubt",
+		"whenever in doubt",
 		"every grouping (by), switch, default and caveat",
 		"ALWAYS resolve names first",
 		"search_projects",

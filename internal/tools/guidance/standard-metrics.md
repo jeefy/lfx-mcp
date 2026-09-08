@@ -92,7 +92,8 @@ Answer four questions, then call once.
      inclusive. period adds a time dimension to by: by=org with period=month
      is one row per organization per month; column `period` is the period's
      first day. Without period the by grouping remains.
-   - An AT-DATE family (memberships, maintainers, project_health,
+   - An AT-DATE family (memberships, member_organizations,
+     paying_member_organizations, maintainers, project_health,
      software_value) reports the state on end_date. With period, one row
      per period end from start_date to end_date; if end_date falls inside a
      period the last row is the state on end_date and the applied block says
@@ -130,13 +131,12 @@ date).
   roster with a code contribution in each year. The roster itself has no
   honest history, so maintainers without period and with an end_date other
   than today is a rejection that says exactly this.
-- project_health: The count and the categories are v2. The average reads
-  the v1 score now and will read the v2 score normalized to a hundred-point
-  scale (raw v2 points over each project's coverage-dependent maximum) once
-  the semantic-layer metric is redefined; applied.definition says which one
-  this call read, and by=population reads the normalized v2 average
-  already. A scored project without a stored maximum counts in the total
-  but not in the average. It is read on the latest snapshot on or before
+- project_health: The count, the categories and the average are v2; the
+  average is the v2 score normalized to a hundred-point scale (raw v2
+  points over each project's coverage-dependent maximum) on both engines,
+  and applied.definition says which column this call read. A scored
+  project without a stored maximum counts in the total but not in the
+  average. It is read on the latest snapshot on or before
   end_date (applied.snapshot_date); v2 snapshots have a short history, and
   an end_date before the first one is a rejection that says so, not a zero.
   applied.coverage says how many LF-hosted projects carry a v2 score; give
@@ -221,16 +221,20 @@ series adds `period` in front; an at-date series adds `period_end` too.
 
 | Family | Kind | by | What it answers | Result columns | Definition and caveat |
 |---|---|---|---|---|---|
-| memberships | at-date | total, org, tier, project, country, region | Memberships and list-price dues on end_date | [account, parent_org / tier / project, project_name / country / region,] current_membership_count, current_membership_revenue (membership_count, membership_revenue on any day but today and on a series) | Distinct project-account pairs with an active term: an organization with memberships on three projects counts three times; "how many members" in the everyday sense is distinct member organizations — a reading this family does not give yet (it arrives as its own metric): report memberships, say the grain, and say the organization reading is not available rather than deriving it; paying-only, new-to-the-LF and lost organizations are the same kind of reading — say which one you report; revenue is LIST PRICE, not dues billed — never divide one by the other; memberships attach at foundation level; country and region are the account's billing country and its LF region (region is provisional); the LF region rollup lists China, India and Japan beside Asia Pacific — "APAC" in the everyday sense is those four rows together: report the sum and name the rows, or the stored row and say it excludes them; the NULL country row also holds accounts whose stored country spelling the lens does not resolve, not only accounts with no country |
-| new_members | window | total, org, project | Memberships sold as new business, by install date | [account, parent_org / project, project_name,] new_membership_count | New business is first-per-project: an organization joining a second project counts again, and a lapsed account that rejoins counts again; "new logos" (organizations new to the LF altogether) is a different reading this family does not give — say which one you report; all history unless start_date |
-| membership_churn | window | total, org, project | Memberships that ended without renewal, by churn date | [...,] churned_membership_count | Churned memberships are project-account pairs that ended: an organization that dropped one project but kept another still counts here and is not a lost member — say which reading you report; the churn date is the day AFTER the term ended, so a term ending on 31 December counts in the following year; zero-revenue and quasi-associate memberships excluded |
+| memberships | at-date | total, org, tier, project, country, region | Memberships and list-price dues on end_date | [account, parent_org / tier / project, project_name / country / region,] current_membership_count, current_membership_revenue (membership_count, membership_revenue on any day but today and on a series) | Distinct project-account pairs with an active term: an organization with memberships on three projects counts three times; "how many members" in the everyday sense is distinct member organizations — that is member_organizations (paying-only: paying_member_organizations), never derived from these rows; say which reading you report; revenue is LIST PRICE, not dues billed — never divide one by the other; memberships attach at foundation level; country and region are the account's billing country and its LF region (region is provisional); the LF region rollup lists China, India and Japan beside Asia Pacific — "APAC" in the everyday sense is those four rows together: report the sum and name the rows, or the stored row and say it excludes them; the NULL country row also holds accounts whose stored country spelling the lens does not resolve, not only accounts with no country |
+| new_members | window | total, org, project | Memberships sold as new business, by install date | [account, parent_org / project, project_name,] new_membership_count | New business is first-per-project: an organization joining a second project counts again, and a lapsed account that rejoins counts again; "new logos" (organizations new to the LF altogether) is new_member_organizations — say which one you report; all history unless start_date |
+| membership_churn | window | total, org, project | Memberships that ended without renewal, by churn date | [...,] churned_membership_count | Churned memberships are project-account pairs that ended: an organization that dropped one project but kept another still counts here and is not a lost member (lost organizations are lost_member_organizations) — say which reading you report; the churn date is the day AFTER the term ended, so a term ending on 31 December counts in the following year; zero-revenue and quasi-associate memberships excluded |
+| member_organizations | at-date | total, project, foundation, country, region | Distinct member organizations on end_date | [project, project_name / foundation / country / region,] member_organizations | ORGANIZATIONS, not memberships: a Salesforce account holding memberships in several projects counts once here and once per project on memberships — "how many members do we have" is this reading; today is status-based, any other day and a series are date-based (installed on or before the day and not ended by it; reads a few percent above the status-based figure; applied.definition and applied.engine say which); an organization in several projects appears in every matching row of a breakdown, so rows never sum to the total; no by=org (that is memberships by=org) and no by=tier (an organization can hold several tiers); memberships attach at foundation level; country and region are the account's billing country and its LF region (region is provisional; the NULL row also holds unresolved spellings) |
+| new_member_organizations | window | total, project, foundation, country, region | Organizations whose FIRST membership was installed in the window | [project, project_name / foundation / country / region,] new_member_organizations | Firstness follows the scope and applied.firstness names it: no project = first LF membership ever ("new logos"); project with subprojects=excluded = first membership in that project; project that is a foundation root (default combined) = first membership in that foundation; a foundation root that belongs to a consortium (a JDF series and its -fund project) = first membership in ANY of the consortium's projects, applied.consortium_members listing them; a project below foundation level with combined is REJECTED (see Errors) — pass subprojects=excluded or name the foundation; same-day installs in two projects both count as first; a lapsed account that rejoins is not new (contrast new_members); with an org named, total reads zero or one per window — the answer to "when did X first join"; all history unless start_date; rows never sum to the total |
+| lost_member_organizations | window | total, project, foundation, country, region | Organizations whose LAST membership lapsed in the window | [project, project_name / foundation / country / region,] lost_member_organizations | The organization grain of churn: an organization that dropped one project but kept another is churned on membership_churn and NOT lost here; counted once, at the churn date of its last term (the day AFTER it ended, so a term ending on 31 December counts in the following year), and only while it holds no active membership; by=project and by=foundation are where that last membership sat; all history unless start_date; rows never sum to the total |
+| paying_member_organizations | at-date | total, project, foundation, country, region | Distinct member organizations with a paying membership on end_date | [project, project_name / foundation / country / region,] paying_member_organizations | The paying subset of member_organizations: at least one active membership whose LIST PRICE is above zero (not dues billed or collected; zero-price and associate memberships do not count); today status-based, any other day and a series date-based; the same grouping rules and the same "rows never sum" caveat as member_organizations |
 | contributors | window | total, org, project, country, region | Distinct code contributors | [account, parent_org / project, project_name / country / region,] total_contributors | Distinct people, bots excluded: never sum rows; country and region follow the PERSON and are known for about a third of contributors — the NULL row is the rest, and the NULL country row also holds people whose stored country spelling the lens does not resolve; the LF region rollup lists China, India and Japan beside Asia Pacific — "APAC" in the everyday sense is those four rows together: report the sum and name the rows, or the stored row and say it excludes them |
 | contributions | window | total, org, project, contributor, type, platform, org_region | Code contribution volume | [account, parent_org / project, project_name / handle, contributor, account / type / platform / org_region,] code_contribution_activities | Additive, bots excluded; by=contributor is one row per GitHub identity (`handle`, a profile URL) with the display name and the resolved account; org_region is the LF region of the employer's HQ |
 | contributing_organizations | window | total, project | Distinct organizations credited with a code contribution | [project, project_name,] total_contributing_organizations | Organizations from the enrichment vocabulary, not CRM accounts; a distinct count: never sum rows |
-| participants | window | total, org, project | Distinct people with a code contribution OR a collaboration activity | [...,] total_contributors_with_collaboration | A superset of contributors (issues, comments, reviews count); distinct people: never sum rows |
+| participants | window | total, org, project | Distinct non-bot people with ANY activity in the window | [...,] total_participants | The broadest people count and much larger than contributors: code, issues, reviews, comments, stars, forks, meeting invitations and attendance, training and exams, Hacker News all count; contributors = code, participants = anyone who did anything; a superset of contributors; distinct people: never sum rows |
 | maintainers | at-date | total, org, project, maintainer | Active maintainers today (LF projects only); with period, today's roster active in each period | [account / foundation, project, project_name / project, project_name, maintainer, account, role,] active_maintainers | Distinct people; LF projects only: an ad hoc count over the whole maintainers index reads higher; the NULL account row is maintainers with no resolved employer; today only unless period; by=maintainer has no series |
 | maintainer_contributions | window | total, org, project, maintainer | Code contributions by people on the CURRENT maintainer roster of the activity's project | [...,] maintainer_contributions[, contributing_maintainers] | Maintainership as of the build, contributions in the window; maintainer_contributions is additive, contributing_maintainers a distinct count; "share of work" is this over contributions for the same scope and window |
-| project_health | at-date | total, foundation, category, population | Projects with a v2 health score and their mean score, on the latest snapshot on or before end_date | [foundation / category / population,] project_health_count, avg_project_health_score | The count and the categories are v2; applied.definition says which average this call read (by=population reads the normalized v2 average already); a scored project without a stored maximum counts in the total but not in the average; v2 snapshots have a short history; a subset of LF-hosted projects (applied.coverage); LF-hosted unless by=population (rows lf_hosted and index); category is the stored v2 band name (Excellent, Healthy, Fair, Concerning, Critical), never a threshold; a distinct-project count: never sum rows; a mean of project scores: never re-average |
+| project_health | at-date | total, foundation, category, population | Projects with a v2 health score and their mean score, on the latest snapshot on or before end_date | [foundation / category / population,] project_health_count, avg_project_health_score | The count, the categories and the average are v2 (the average normalized to a hundred-point scale on both engines; applied.definition says which column this call read); a scored project without a stored maximum counts in the total but not in the average; v2 snapshots have a short history; a subset of LF-hosted projects (applied.coverage); LF-hosted unless by=population (rows lf_hosted and index); category is the stored v2 band name (Excellent, Healthy, Fair, Concerning, Critical), never a threshold; a distinct-project count: never sum rows; a mean of project scores: never re-average |
 | software_value | at-date | total, foundation, population | COCOMO software value summed over each LF-hosted project's own latest snapshot row on or before end_date, whatever day that row is on | [foundation / population,] total_software_value | USD; not pinned to one day (applied.snapshot_date is null): each project as of its own latest row; a project whose latest row is a health-only day contributes nothing, so totals read low, never inflated — applied.coverage says how many LF-hosted projects carry a value; additive across projects, never across days |
 | event_registrations | window | total, event, org | Accepted registrations of events starting in the window, and the distinct people behind them | [event / account, parent_org,] total_registrations, total_unique_registrants, total_checked_in_attendees | The window is the EVENT start date (an ad hoc query by registration date reads differently); registrants and checked-in attendees are distinct people by email, not registrations: never sum them across rows; check-in data exists only for some registration sources, so an event whose source carries none shows zero attendees, not low attendance; by=org is the registrant's account, NULL = unattributed |
 | event_sponsorships | window | total, org, event | Sponsorship revenue and count of sponsorships, for events starting in the window (one event can carry several) | [account, parent_org / event,] total_sponsorship_revenue, total_sponsorship_count | Additive; USD; all tier types |
@@ -273,9 +277,20 @@ a leaf project's own memberships are zero by attachment, not by data loss.
 An unknown slug is rejected with candidate slugs and names; 'kubernetes' is
 not a slug, 'k8s' is — and stating the stored spelling here does not exempt
 it: k8s, cncf and tlf still come back from search_projects in-session before
-they go in a call. A consortium's memberships can sit on a sibling fund
-project (search_projects returns both, the fund with a '-fund' slug): query
-both and report the combined figure, saying so.
+they go in a call.
+
+CONSORTIA. A JDF series and its '-fund' project (search_projects returns
+both, the fund with a '-fund' slug) are one consortium in the CRM, two roots
+side by side. On the membership and organization families (memberships,
+new_members, membership_churn, member_organizations,
+new_member_organizations, lost_member_organizations,
+paying_member_organizations) a project named with the default
+subprojects=combined reads its subtree PLUS every project of its consortium
+in one call, and the applied block says so: `consortium` names it and
+`consortium_members` lists every slug merged. Report the one figure and name
+the members. subprojects=excluded reads the named project alone and merges
+nothing. Families on other models (activity, events, training, health) never
+merge a consortium.
 
 ## What goes in the answer
 
@@ -316,9 +331,10 @@ LF-hosted projects today", and the offer of the breakdown by project.
   breakdown returns every row and can run to thousands: count with
   by=total, list with limit and order_by (applied.truncated says when the
   list is partial).
-- "How many developers participated / took part" means participants (a
-  code contribution OR a collaboration activity); name contributors (code
-  only) as the narrower alternative, not the default.
+- "How many developers participated / took part / how big is the community"
+  means participants (any non-bot activity, stars and forks included); name
+  contributors (code only) as the narrower alternative, not the default, and
+  say the two are different populations.
 - The NULL account row is unattributed work, and the NULL employer row is a
   maintainer whose employer was not resolved — never an organization, never
   folded into a parent. Report them as unattributed. The NULL country or
@@ -333,11 +349,10 @@ LF-hosted projects today", and the offer of the breakdown by project.
   and membership_revenue; say "as of <date>" and that it is the date-based
   count. memberships counts project-account pairs: an organization with
   memberships on three projects counts three times; "how many members" in
-  the everyday sense is distinct member organizations — a reading this
-  family does not give yet (it arrives as its own metric): report
-  memberships, say the grain, and say the organization reading is not
-  available rather than deriving it; paying-only, new-to-the-LF and lost
-  organizations are the same kind of reading — say which one you report.
+  the everyday sense is distinct member organizations — member_organizations
+  (paying-only: paying_member_organizations; new to the LF:
+  new_member_organizations; lost: lost_member_organizations). Never derive
+  one grain from the other; the answer names which reading it reports.
 - contributions by=contributor and maintainer_contributions by=maintainer
   rows are GitHub identities: `handle` is the stored identity (a profile
   URL), `contributor` or `maintainer` the display name, `account` the one
@@ -384,6 +399,20 @@ LF-hosted projects today", and the offer of the breakdown by project.
   query returns a surprising figure, report it as returned and name the
   cause (a stray same-name account, say) as the caveat; do not re-issue it
   with different filter logic.
+- Organizations, not memberships: member_organizations, no project → today's
+  distinct member organizations across the LF; add end_date=2022-12-31 for
+  the year-end state (date-based; applied.engine says warehouse).
+- New to the LF this year versus last: new_member_organizations,
+  start_date=2026-01-01 → one figure, applied.firstness "first membership
+  ever"; the same with start_date=2025-01-01, end_date=2025-12-31 for the
+  comparison. project=tlf makes it "first membership in foundation tlf";
+  project=c2pa makes it first membership in the C2PA consortium (series and
+  fund together, applied.consortium_members).
+- Lost in a year: lost_member_organizations, start_date=2025-01-01,
+  end_date=2025-12-31 → organizations whose last membership lapsed in 2025;
+  say "organizations", contrast membership_churn (pairs).
+- Paying today: paying_member_organizations, no project → today's paying
+  member organizations; say "list price above zero", not dues collected.
 - A rejection: memberships, start_date=2020-01-01 → "start_date needs period
   for an at-date metric; the state on a single day is end_date alone" — add
   period=year for the series, or drop start_date for one day.
@@ -395,6 +424,11 @@ not retry the same one.
 
 - an unknown metric, or a grouping the family does not offer: the message
   lists the valid names or groupings.
+- new_member_organizations with a project below foundation level and
+  subprojects=combined: "first-membership is defined for a single project
+  or for a whole foundation" — pass subprojects=excluded for organizations
+  whose first membership in that project falls in the window, or name the
+  foundation the message gives for organizations new to it. Never a number.
 - start_date without period on an at-date family; an end_date other than
   today on maintainers without period; period on a family and grouping
   with no series yet.
