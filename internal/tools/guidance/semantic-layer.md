@@ -200,8 +200,9 @@ row, so scored projects are counted on the score, never on the label. For
 "current" or "today" health with no date, current_project_health_count,
 current_avg_health_score and current_software_value (on
 silver_fact_project_health_latest) read each project's own latest snapshot
-without a pin — and they read the WHOLE population, LF-hosted plus the
-open-source index, unless filtered on
+without a pin — a different population from the pinned day's (each project on
+its own date, so "current" is not "today's reading") — and the WHOLE
+population, LF-hosted plus the open-source index, unless filtered on
 project_health_latest_id__is_lf_project or
 project_health_latest_id__foundation_slug; a bare current_* figure is never
 "LF project health". Any dated question stays on the daily fact with the pin.

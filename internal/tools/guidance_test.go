@@ -143,7 +143,8 @@ func TestSemanticLayerGuidanceContent(t *testing.T) {
 		"health_metric_key__health_score_category_v2') }} IS NOT NULL",
 		"(Excellent, Healthy, Fair, Concerning, Critical)",
 		"current_avg_health_score and current_software_value",
-		"read each project's own latest snapshot\nwithout a pin",
+		"read each project's own latest snapshot\nwithout a pin — a different population from the pinned day's (each project on\nits own date, so \"current\" is not \"today's reading\")",
+		"project_health_latest_id__is_lf_project",
 		"total_software_value",
 		"COCOMO",
 		// populations, maintainers, regions, person grain
