@@ -980,6 +980,7 @@ func runHTTPServer(cfg Config, otelCfg localOtel.Config, otelShutdown func(conte
 
 		authMiddleware := auth.RequireBearerToken(verifyToken, &auth.RequireBearerTokenOptions{
 			ResourceMetadataURL: resourceMetadataURL,
+			Scopes:              tools.EnforcedScopes(),
 		})
 		mcpHandler = authMiddleware(handler)
 		logger.Info("OAuth bearer token verification enabled for /mcp endpoint", "audience", audience)
