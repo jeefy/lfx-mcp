@@ -269,7 +269,7 @@ If you have not read read_lfx_semantic_layer_guidance yet this session, read it 
 
 SYNTAX: metrics (required), CSV. group_by: dimension qualified_names copied from explore; add metric_time__year (or __quarter, __month) for trends. where is MetricFlow: {{ Dimension('country__lf_region') }} = 'Europe'; {{ TimeDimension('metric_time','DAY') }} >= '2024-01-01'; dates yyyy-mm-dd. limit optional.
 
-SCOPE lives in where (no project parameter). Foundation: {{ Dimension('project__foundation_slug') }} = '<slug>' (resolve via search_projects); NEVER scope a foundation with project_slug - its catch-all bucket, a silent undercount. LF-wide ('the Linux Foundation' as a whole) = no project filter at all; 'tlf' is the LF's own bucket, not the LF-wide scope. Org/account filters take FULL LEGAL names - search_b2b_orgs first.
+SCOPE lives in where (no project parameter). Foundation: {{ Dimension('project__foundation_slug') }} = '<slug>' (resolve via search_projects); NEVER scope a foundation with project_slug - its catch-all bucket, a silent undercount. LF-wide ('the Linux Foundation' as a whole) = no project filter at all; 'tlf' is the LF's own membership programme and a tree root, not the LF-wide scope. Org/account filters take FULL LEGAL names - search_b2b_orgs first.
 
 0 rows = misspelled literal or wrong scope: get_dimension_values, then the guidance recipes, BEFORE any query_lfx_lens fallback. State definition and window with every answer.`
 
