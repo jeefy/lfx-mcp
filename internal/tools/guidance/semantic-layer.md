@@ -34,10 +34,9 @@ Dimension qualified_names are entity__field, prefix per metric — copy from exp
   registrations here group by registration date unless you pick the event
   start date, the family uses the event start date; speakers here include
   every proposal status unless filtered to Accepted, the family counts
-  Accepted only; training and certification by-account readings here keep
-  accounts with zero in the window, the family omits them; placeholder
-  accounts ('Individual - No Account', 'TI Account') appear as accounts here
-  and are unattributed there.
+  Accepted only; placeholder accounts ('Individual - No Account',
+  'TI Account') appear as accounts here and are folded into the NULL
+  account row there.
 
 ## Protocol
 

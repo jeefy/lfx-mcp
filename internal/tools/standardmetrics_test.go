@@ -126,7 +126,7 @@ var standardMetricGroupings = map[string]string{
 	"software_value":              "total, foundation, population",
 	"event_registrations":         "total, event, org",
 	"event_sponsorships":          "total, org, event",
-	"speakers":                    "total, event",
+	"speakers":                    "total, event, org",
 	"training_enrollments":        "total, org, course",
 	"certifications":              "total, org",
 	"social_mentions":             "total, project, network, sentiment",
