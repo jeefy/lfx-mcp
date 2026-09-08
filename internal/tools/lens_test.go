@@ -239,7 +239,7 @@ func TestExploreSemanticLayerDescription(t *testing.T) {
 	for _, want := range []string{
 		// The covered domains, named so routing works from this tool.
 		"contributor, contribution, membership, revenue, event, registration, speaker, sponsorship, enrollment, certification, maintainer, health",
-		"country or region",
+		"country, region, parent organization or project tree",
 		// Guidance-first, once per session, shared with the query tool.
 		"read_lfx_semantic_layer_guidance",
 		"read it BEFORE using this tool",
