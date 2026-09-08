@@ -124,9 +124,11 @@ date).
   is a rejection.
 - project_health is read on the latest snapshot on or before end_date
   (applied.snapshot_date); an end_date before the first v2 snapshot is a
-  rejection, not a zero. In the answer: the figure, the scope, the snapshot
-  day, and the version applied.definition gives — one line; give
-  applied.coverage when the count is the answer.
+  rejection, not a zero; this family has no unpinned reading — each project's
+  own latest score with no common day is the semantic-layer route's current_*
+  health metrics. In the answer: the figure, the scope, the snapshot day, and
+  the version applied.definition gives — one line; give applied.coverage when
+  the count is the answer.
 - software_value is not pinned to one day: each LF-hosted project is read
   as of its own latest snapshot row on or before end_date, and a project
   whose latest row carries no value contributes nothing, so

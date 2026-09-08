@@ -307,7 +307,7 @@ func TestStandardMetricsGuidanceContent(t *testing.T) {
 		"a few percent above\n  the status-based figure; applied.definition says which",
 		"today's roster members\n  with a code contribution in each period (the activity's account on by=org),\n  not the roster at that time",
 		"an end_date other than today without period\n  is a rejection",
-		"give\n  applied.coverage when the count is the answer",
+		"give applied.coverage when\n  the count is the answer",
 		// defaults and the applied block
 		"## Defaults and the applied block",
 		"end_date defaults to today (UTC)",
@@ -432,10 +432,10 @@ func TestStandardMetricsGuidanceContent(t *testing.T) {
 		"an order_by field that is not one of the result columns",
 		"no snapshot on or before end_date",
 		// round 9: date-free health disclosure; the tool reports the version
-		"- project_health is read on the latest snapshot on or before end_date\n  (applied.snapshot_date); an end_date before the first v2 snapshot is a\n  rejection, not a zero",
+		"- project_health is read on the latest snapshot on or before end_date\n  (applied.snapshot_date); an end_date before the first v2 snapshot is a\n  rejection, not a zero; this family has no unpinned reading — each project's\n  own latest score with no common day is the semantic-layer route's current_*\n  health metrics",
 		"applied.definition says which column this call read",
 		"v2 snapshots have a short history",
-		"In the answer: the figure, the scope, the snapshot\n  day, and the version applied.definition gives — one line",
+		"In the answer: the figure, the scope, the snapshot day, and\n  the version applied.definition gives — one line",
 		"the average normalized to a hundred-point scale on both engines; applied.definition says which column this call read",
 		"snapshots have a short history).",
 		// round 9: answer economy, the umbrella slug, placeholders, one lens query
