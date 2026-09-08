@@ -70,9 +70,9 @@ const participantEmptyNote = "No past-meeting participants are visible to your i
 // meetings than max_meetings.
 const participantTruncatedNote = "The date range matched more past meetings than max_meetings; only the first %d were expanded. Narrow the range or raise max_meetings (max %d)."
 
-// participantRecordsCapNote is added when the date range collected more
-// participant records than participantMaxRecords.
-const participantRecordsCapNote = "The date range matched more than %d participant records; the result stops there (truncated_records=true). Narrow the range, add attended_only or org_name, or use count_only."
+// participantRecordsCapNote reports reaching the cap without claiming that
+// any unvisited meetings or pages contain additional matching records.
+const participantRecordsCapNote = "The record cap (%d) was reached before every matching past meeting was checked; participant records may have been omitted (truncated_records=true). Narrow the range, add attended_only or org_name, or use count_only."
 
 // participantPerPageNote explains dedup scope on a paged call.
 const participantPerPageNote = "people and records describe this page only; a person whose records straddle pages can appear on more than one page."
