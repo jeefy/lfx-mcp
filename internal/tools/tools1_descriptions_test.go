@@ -19,7 +19,8 @@ func TestTools1Descriptions_FitSchemaBudget(t *testing.T) {
 		register func(*mcp.Server)
 	}{
 		{"count_lfx_resources", RegisterCountLFXResources},
-		{"search_past_meeting_participants", RegisterSearchPastMeetingParticipants},
+		{"search_past_meeting_participants", func(s *mcp.Server) { RegisterSearchPastMeetingParticipants(s, false) }},
+		{"search_past_meeting_participants", func(s *mcp.Server) { RegisterSearchPastMeetingParticipants(s, true) }},
 		{"get_org_committee_seats", RegisterGetOrgCommitteeSeats},
 		{"search_projects", RegisterSearchProjects},
 	} {

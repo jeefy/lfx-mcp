@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 func TestParticipants_RecordCapNoteDoesNotInventExtraMatches(t *testing.T) {
@@ -50,7 +52,7 @@ func TestParticipants_RecordCapNoteDoesNotInventExtraMatches(t *testing.T) {
 }
 
 func TestParticipants_RecordCapDisclosureMatchesSchema(t *testing.T) {
-	tool := listRegisteredTool(t, "search_past_meeting_participants", RegisterSearchPastMeetingParticipants)
+	tool := listRegisteredTool(t, "search_past_meeting_participants", func(s *mcp.Server) { RegisterSearchPastMeetingParticipants(s, false) })
 	want := "reached the record cap before all meetings were checked"
 	if !strings.Contains(tool.Description, want) || !strings.Contains(tool.Description, "truncated_records") {
 		t.Errorf("description must explain the conservative record cap: %s", tool.Description)

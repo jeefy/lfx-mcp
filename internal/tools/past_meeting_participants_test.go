@@ -450,7 +450,7 @@ func TestMeetingRegistrantsDescriptionMatchesHandler(t *testing.T) {
 }
 
 func TestParticipantsDescriptionAdvertisesNewFilters(t *testing.T) {
-	tool := listRegisteredTool(t, "search_past_meeting_participants", RegisterSearchPastMeetingParticipants)
+	tool := listRegisteredTool(t, "search_past_meeting_participants", func(s *mcp.Server) { RegisterSearchPastMeetingParticipants(s, false) })
 	if n := len(tool.Description); n > 1000 {
 		t.Errorf("description is %d bytes, keep it under 1000", n)
 	}

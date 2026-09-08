@@ -755,7 +755,7 @@ func newServer(cfg Config, serviceName string, callerToken *auth.TokenInfo) *mcp
 		tools.RegisterGetMeetingRegistrant(server)
 	}
 	if enabledTools["search_past_meeting_participants"] && canRead {
-		tools.RegisterSearchPastMeetingParticipants(server)
+		tools.RegisterSearchPastMeetingParticipants(server, cfg.CommitteesAsGroups)
 	}
 	if enabledTools["get_past_meeting_participant"] && canRead {
 		tools.RegisterGetPastMeetingParticipant(server)

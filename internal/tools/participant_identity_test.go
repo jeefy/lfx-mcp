@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	querysvc "github.com/linuxfoundation/lfx-v2-query-service/gen/query_svc"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // identityFixture mirrors the synthetic participantRecord fixture in Self
@@ -244,7 +245,7 @@ func TestParticipantIdentity_JavaScriptNormalizationParity(t *testing.T) {
 }
 
 func TestParticipantIdentity_DescriptionAndSchema(t *testing.T) {
-	tool := listRegisteredTool(t, "search_past_meeting_participants", RegisterSearchPastMeetingParticipants)
+	tool := listRegisteredTool(t, "search_past_meeting_participants", func(s *mcp.Server) { RegisterSearchPastMeetingParticipants(s, false) })
 	t.Logf("search_past_meeting_participants description: %d UTF-8 bytes", len(tool.Description))
 	want := "People are de-duplicated by identity like LFX Self Serve: LFX username when both records have one, else e-mail, else normalised name; dedupe=false returns raw records."
 	if !strings.Contains(tool.Description, want) {
