@@ -282,6 +282,22 @@ func TestStandardMetrics_RegistersReadOnly(t *testing.T) {
 // TestStandardMetrics_SchemaIsTheParameterContract pins the parameter set
 // itself: every argument is a field of the lens request body, so a field added
 // or dropped here changes the wire contract, not just the documentation.
+// The parameter descriptions are the contract a model reads before the
+// guidance; the sentences the guidance also states must say the same thing
+// (a Copilot review caught start_date's default window naming two families
+// where the guidance names four).
+func TestStandardMetrics_ParameterDescriptionsMatchTheGuidance(t *testing.T) {
+	tool := listStandardMetricsTool(t)
+	for property, want := range map[string]string{
+		"start_date": "all history on new_members, membership_churn and the new_/lost_member_organizations families",
+		"project":    "the LF's own membership programme and a root of the project tree, not the LF-wide scope",
+	} {
+		if got := schemaPropertyDescription(t, tool, property); !strings.Contains(got, want) {
+			t.Errorf("standardmetrics.%s description missing %q", property, want)
+		}
+	}
+}
+
 func TestStandardMetrics_SchemaIsTheParameterContract(t *testing.T) {
 	got := schemaProperties(t, listStandardMetricsTool(t))
 	want := append([]string(nil), standardMetricParameters...)
