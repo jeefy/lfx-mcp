@@ -74,8 +74,8 @@ dimension by what the question names:
 - A WHOLE FOUNDATION (CNCF, LF AI & Data, OpenSSF...):
   {{ Dimension('project__foundation_slug') }} = '<slug>' — the conformed lens:
   works on every metric family, counts each row once. NEVER use project_slug for
-  a foundation: it matches only the foundation's catch-all bucket, a silent ~40x
-  undercount on activities. The one exception is the umbrella itself: "The
+  a foundation: it matches only the foundation's catch-all bucket, a silent
+  severe undercount on activities. The one exception is the umbrella itself: "The
   Linux Foundation" as a whole is LF-wide — no project filter at all (or group
   by foundation to show the split). The 'tlf' slug is the umbrella's own
   bucket, not the LF-wide scope; state which population you used.
@@ -92,7 +92,7 @@ dimension by what the question names:
   spine_hierarchy_level = 2 lists direct children
   ("Direct children of X": spine slug = X + level 2, group by project slug).
 - SUM METRICS (insertions, deletions): ALWAYS the spine filter — non-hierarchical
-  filters inflate them 2-4x. Walk-downs are flattened: counts only, never sums.
+  filters inflate them severalfold. Walk-downs are flattened: counts only, never sums.
 - ATTACHMENT LEVELS: memberships and event registrations attach at FOUNDATION
   level almost entirely, so a project-level filter on them is legitimately
   near-empty rather than a failed query — scope them by foundation and say the
@@ -152,19 +152,19 @@ spelling and scope first; only then report absence.
 ## Worked recipes
 
 1. BOTS. Bot exclusion is the default, built into contributor and activity
-metrics (code volumes read roughly 1.8x higher with bots); bot_activities
+metrics (code volumes read noticeably higher with bots); bot_activities
 (member_is_bot) is the explicit bot view.
 
 2. ORG SHARES. Share of work = ACTIVITY VOLUMES, never headcounts. Compute on the
 org-ATTRIBUTED base: filter activity_project_id__is_org_contribution = true — the
 governed real-organization filter (no need to hand-exclude NULL rows and
-'Individual - No Account') — and report the unattributed share (roughly 40-70%)
-separately. Account-attributed rows are a SUPERSET of is_org_contribution; the
+'Individual - No Account') — and report the unattributed share separately (it
+is large). Account-attributed rows are a SUPERSET of is_org_contribution; the
 difference is exactly the Individual placeholder accounts, so a numerator
 filtered on an account rollup sits inside this base.
 
-3. ORG HEADCOUNTS run 2-4x below externally published counts (volumes reconcile
-to ~1-4%). State the caveat.
+3. ORG HEADCOUNTS run well below externally published headcounts (volumes
+reconcile far more closely). State the caveat.
 
 4. CONTRIBUTOR POPULATIONS. total_contributors = code-only, non-bot;
 total_contributors_with_collaboration adds issues/docs/chat (say so); total_activities = any activity.
@@ -204,7 +204,7 @@ and the two vocabularies never mix in one answer.
 
 8. HEALTH SCORES are daily snapshots: find the latest health-bearing date
 ({{ Dimension('health_metric_key__health_score_category_v2') }} IS NOT NULL),
-filter to it, then aggregate; unfiltered grouping inflates ~8-9x. Categories
+filter to it, then aggregate; unfiltered grouping inflates severalfold. Categories
 are the stored v2 band names (Excellent, Healthy, Fair, Concerning, Critical):
 group by them, never by a threshold; the v2 category can be NULL on a scored
 row, so scored projects are counted on the score, never on the label. For

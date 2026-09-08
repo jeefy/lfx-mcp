@@ -127,11 +127,12 @@ func TestSemanticLayerGuidanceContent(t *testing.T) {
 		// bots
 		"member_is_bot",
 		"bot_activities",
-		"roughly 1.8x",
-		// org shares and headcounts
+		"read noticeably higher with bots",
+		// org shares and headcounts (in words, never a ratio)
 		"org-ATTRIBUTED",
 		"Individual - No Account",
-		"2-4x",
+		"report the unattributed share separately (it\nis large)",
+		"run well below externally published headcounts (volumes\nreconcile far more closely)",
 		// name discovery and rollups
 		"International Business Machines Corporation",
 		"Red Hat LLC",
@@ -508,6 +509,19 @@ func TestStandardMetricsGuidanceCarriesNoFigure(t *testing.T) {
 		if !allowed.MatchString(match) {
 			t.Errorf("standard metric guidance carries the figure %q; figures go stale and get quoted", match)
 		}
+	}
+}
+
+// TestSemanticLayerGuidanceCarriesNoDataRatio pins that the semantic-layer
+// guidance quotes no data-derived ratio or share (a bots multiplier, an
+// unattributed-share range, a headcount multiplier, a reconciliation
+// percentage): such a figure is a measurement of one day's warehouse that
+// gets quoted as if it were the answer. Ratios are words; a figure a caller
+// needs is read at request time into applied.coverage or not at all.
+func TestSemanticLayerGuidanceCarriesNoDataRatio(t *testing.T) {
+	ratio := regexp.MustCompile(`\b\d+(\.\d+)?(-\d+(\.\d+)?)?\s?(x\b|%)|~\d`)
+	for _, m := range ratio.FindAllString(semanticLayerGuidance, -1) {
+		t.Errorf("semantic layer guidance carries the data ratio %q; say it in words", m)
 	}
 }
 
