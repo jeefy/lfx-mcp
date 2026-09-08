@@ -80,23 +80,6 @@ const participantPerPageNote = "people and records describe this page only; a pe
 // participantCountRecordsNote distinguishes counted records from people.
 const participantCountRecordsNote = " This counts participant records, not distinct people; use count_only=false for de-duplicated people."
 
-// participantRecord is the subset of a v1_past_meeting_participant document
-// the dedup merge reads and writes. Every other field is carried through
-// untouched in Raw.
-type participantRecord struct {
-	UID                string `json:"uid"`
-	Email              string `json:"email"`
-	IsAttended         bool   `json:"is_attended"`
-	IsInvited          bool   `json:"is_invited"`
-	Host               bool   `json:"host"`
-	OrgIsMember        bool   `json:"org_is_member"`
-	OrgIsProjectMember bool   `json:"org_is_project_member"`
-	AvatarURL          string `json:"avatar_url"`
-	JobTitle           string `json:"job_title"`
-	OrgName            string `json:"org_name"`
-	Username           string `json:"username"`
-}
-
 // participantSearchResult is the output shape of search_past_meeting_participants.
 type participantSearchResult struct {
 	Resources []*querysvc.Resource `json:"resources"`
@@ -264,109 +247,6 @@ func countParticipants(ctx context.Context, clients *lfxv2.Clients, parent strin
 		payload.Name = strPtr(args.Name)
 	}
 	return clients.QuerySvc.QueryResourcesCount(ctx, payload)
-}
-
-// dedupeParticipants collapses participant records into people the way LFX
-// Self Serve's getPastMeetingParticipants does: key = trimmed lower-cased
-// e-mail, else uid; attendance flags OR'd; the attended record's fields win;
-// missing fields filled from the other record. Order of first appearance is kept.
-func dedupeParticipants(resources []*querysvc.Resource) []*querysvc.Resource {
-	type entry struct {
-		res *querysvc.Resource
-		rec participantRecord
-		raw map[string]any
-	}
-	index := map[string]int{}
-	var entries []entry
-
-	for _, res := range resources {
-		raw, ok := res.Data.(map[string]any)
-		if !ok {
-			// Not a participant document we can read; keep as-is under its id.
-			entries = append(entries, entry{res: res})
-			continue
-		}
-		rec := participantFromMap(raw)
-		key := strings.ToLower(strings.TrimSpace(rec.Email))
-		if key == "" {
-			key = rec.UID
-		}
-		if key == "" && res.ID != nil {
-			key = *res.ID
-		}
-		i, seen := index[key]
-		if !seen || key == "" {
-			index[key] = len(entries)
-			entries = append(entries, entry{res: res, rec: rec, raw: raw})
-			continue
-		}
-
-		existing := entries[i]
-		preferred, other := existing, entry{res: res, rec: rec, raw: raw}
-		if rec.IsAttended && !existing.rec.IsAttended {
-			preferred, other = other, preferred
-		}
-
-		merged := map[string]any{}
-		for k, v := range preferred.raw {
-			merged[k] = v
-		}
-		merged["is_attended"] = existing.rec.IsAttended || rec.IsAttended
-		merged["is_invited"] = existing.rec.IsInvited || rec.IsInvited
-		merged["host"] = existing.rec.Host || rec.Host
-		merged["org_is_member"] = existing.rec.OrgIsMember || rec.OrgIsMember
-		merged["org_is_project_member"] = existing.rec.OrgIsProjectMember || rec.OrgIsProjectMember
-		for _, field := range []string{"avatar_url", "job_title", "org_name", "username"} {
-			if isEmptyValue(merged[field]) {
-				if v, ok := other.raw[field]; ok && !isEmptyValue(v) {
-					merged[field] = v
-				}
-			}
-		}
-
-		mergedRes := &querysvc.Resource{Type: preferred.res.Type, ID: preferred.res.ID, Data: merged}
-		entries[i] = entry{res: mergedRes, rec: participantFromMap(merged), raw: merged}
-	}
-
-	out := make([]*querysvc.Resource, 0, len(entries))
-	for _, e := range entries {
-		out = append(out, e.res)
-	}
-	return out
-}
-
-// participantFromMap reads the dedup-relevant fields from a document map.
-func participantFromMap(m map[string]any) participantRecord {
-	str := func(k string) string {
-		v, _ := m[k].(string)
-		return v
-	}
-	b := func(k string) bool {
-		v, _ := m[k].(bool)
-		return v
-	}
-	return participantRecord{
-		UID:                str("uid"),
-		Email:              str("email"),
-		IsAttended:         b("is_attended"),
-		IsInvited:          b("is_invited"),
-		Host:               b("host"),
-		OrgIsMember:        b("org_is_member"),
-		OrgIsProjectMember: b("org_is_project_member"),
-		AvatarURL:          str("avatar_url"),
-		JobTitle:           str("job_title"),
-		OrgName:            str("org_name"),
-		Username:           str("username"),
-	}
-}
-
-// isEmptyValue treats nil and "" as absent for the fill-from-other merge.
-func isEmptyValue(v any) bool {
-	if v == nil {
-		return true
-	}
-	s, ok := v.(string)
-	return ok && s == ""
 }
 
 // handleSearchPastMeetingParticipants implements the search_past_meeting_participants tool logic.

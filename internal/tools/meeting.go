@@ -130,7 +130,7 @@ func RegisterGetMeetingRegistrant(server *mcp.Server) {
 func RegisterSearchPastMeetingParticipants(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "search_past_meeting_participants",
-		Description: "Search for LFX past meeting participants using the query service. Filter by past meeting ID (meeting_and_occurrence_id), committee UID or project UID, by name, by meeting start date range (date_from/date_to, resolved through the past meetings of that project or committee), attended_only, and exact stored org_name. People are de-duplicated by e-mail like LFX Self Serve (dedupe=false for raw records); count_only returns the record count with complete and visibility. Results cover only the meetings visible to the caller. truncated_records=true means the search reached the record cap before all meetings were checked.",
+		Description: "Search for LFX past meeting participants using the query service. Filter by past meeting ID (meeting_and_occurrence_id), committee UID or project UID, by name, by meeting start date range (date_from/date_to, resolved through the past meetings of that project or committee), attended_only, and exact stored org_name. People are de-duplicated by identity like LFX Self Serve: LFX username when both records have one, else e-mail, else normalised name; dedupe=false returns raw records. count_only returns the record count with complete and visibility. Results cover only the meetings visible to the caller. truncated_records=true means the search reached the record cap before all meetings were checked.",
 		Annotations: &mcp.ToolAnnotations{
 			Title:        "Search Past Meeting Participants",
 			ReadOnlyHint: true,
@@ -281,7 +281,7 @@ type SearchPastMeetingParticipantsArgs struct {
 	AttendedOnly  bool   `json:"attended_only,omitempty" jsonschema:"Only participants who attended (is_attended:true)"`
 	OrgName       string `json:"org_name,omitempty" jsonschema:"Exact stored organisation name, case-sensitive (copy it from a participant record)"`
 	CountOnly     bool   `json:"count_only,omitempty" jsonschema:"Return only {count, complete, visibility, note}: the number of participant records (not distinct people) matching the filters"`
-	Dedupe        *bool  `json:"dedupe,omitempty" jsonschema:"De-duplicate people by e-mail (default true), merging attendance flags like LFX Self Serve; applies within the returned page (or the whole date range); set false for the raw records"`
+	Dedupe        *bool  `json:"dedupe,omitempty" jsonschema:"People are de-duplicated by identity like LFX Self Serve: LFX username when both records have one, else e-mail, else normalised name; dedupe=false returns raw records. default true; applies within the returned page (or the whole date range)"`
 	Sort          string `json:"sort,omitempty" jsonschema:"Sort order: name_asc (default), name_desc, updated_asc, updated_desc; with a date range the sort applies within each meeting and meetings are listed earliest first"`
 	PageSize      int    `json:"page_size,omitempty" jsonschema:"Number of results per page (default 10, max 100); ignored with a date range. truncated_records=true means the search reached the record cap before all meetings were checked"`
 	PageToken     string `json:"page_token,omitempty" jsonschema:"Opaque pagination token from a previous search response (not usable with a date range)"`

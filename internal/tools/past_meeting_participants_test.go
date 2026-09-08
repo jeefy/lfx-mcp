@@ -201,7 +201,7 @@ func TestParticipants_EmptyPageNotes(t *testing.T) {
 func TestParticipants_DedupeMergesLikeSelfServe(t *testing.T) {
 	api := setupParticipantTest(t)
 	// Same person twice (case/space differences), attended only on the second
-	// record, which also carries the org. Plus one record with no e-mail.
+	// record, which also carries the org. Plus an unmatched name with no e-mail.
 	invitedOnly := strings.Replace(participantDoc("p1", "Ann@Example.org ", "Ann", "A", false, true, "Old Org"), `"job_title": "Engineer"`, `"job_title": "CTO"`, 1)
 	attended := strings.Replace(participantDoc("p2", "ann@example.org", "Ann", "A", true, false, "Red Hat"), `"job_title": "Engineer"`, `"job_title": ""`, 1)
 	noEmail := participantDoc("p3", "", "Ghost", "G", true, false, "")
@@ -228,8 +228,31 @@ func TestParticipants_DedupeMergesLikeSelfServe(t *testing.T) {
 	}
 	ghost := resources[1].(map[string]any)["Data"].(map[string]any)
 	if ghost["uid"] != "p3" {
-		t.Errorf("no-email record must survive under its uid, got %v", ghost)
+		t.Errorf("the unmatched no-email record must survive as a singleton, got %v", ghost)
 	}
+}
+
+func TestParticipants_IdentityDedupePreservesOutputCountsAndScope(t *testing.T) {
+	api := setupParticipantTest(t)
+	invited := strings.Replace(participantDoc("p1", "account@example.org", "Test", "Person", false, true, "Invited Org"), `"username": ""`, `"username": "synthetic-user"`, 1)
+	attended := strings.Replace(participantDoc("p2", "session@example.org", "Test", "Person", true, false, "Attended Org"), `"username": ""`, `"username": "synthetic-user"`, 1)
+	api.Respond(resourcesPath, page([]string{invited, attended}, "next"))
+	res, _, err := handleSearchPastMeetingParticipants(context.Background(), stubCallToolRequest(), SearchPastMeetingParticipantsArgs{ProjectUID: "p"})
+	if err != nil || res.IsError {
+		t.Fatalf("unexpected error: %v, %s", err, allResultText(t, res))
+	}
+	out := resultJSON(t, res)
+	if out["people"] != float64(1) || out["records"] != float64(2) || out["page_token"] != "next" {
+		t.Errorf("identity dedup must keep raw records and the page token: %v", out)
+	}
+	if note, _ := out["note"].(string); !strings.Contains(note, "this page only") {
+		t.Errorf("per-page scope note missing: %s", note)
+	}
+	data := out["resources"].([]any)[0].(map[string]any)["Data"].(map[string]any)
+	if data["email"] != "account@example.org" || data["org_name"] != "Attended Org" || data["is_attended"] != true || data["is_invited"] != true {
+		t.Errorf("handler must expose the Self Serve merge: %v", data)
+	}
+	assertExchangedAuth(t, api.LastRequest())
 }
 
 func TestParticipants_DedupeFalseReturnsRawRecords(t *testing.T) {
