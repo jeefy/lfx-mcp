@@ -204,12 +204,18 @@ func TestSemanticLayerGuidanceContent(t *testing.T) {
 		// resolve-first: a guessed slug or account name is a silent wrong answer
 		"ALWAYS resolve names first",
 		"has not come back from them",
-		// the layer's own reach is one hop / one level, and it says so, with
-		// the standard metrics as the any-depth route
-		"REACH — how deep this layer's own dimensions go",
-		"ONE HOP",
-		"not their own acquisitions",
-		"for the whole company at any depth use the standard\nmetric",
+		// DBT-2: the layer reaches the whole company and the whole subtree on
+		// its own dimensions; the rollup is one hop, the parent slug one level,
+		// and the two models without an account entity are named
+		"REACH — how deep this layer's own dimensions go: the whole company at any\n  depth is account__top_parent_name",
+		"account__account_rollup_name is ONE hop,\n  for direct subsidiaries only",
+		"project__project_path LIKE '%/<slug>/%' (project__project_depth for\n  levels); project__parent_project_slug is one level",
+		"Speakers and meeting\n  attendance carry no account entity",
+		"ANY DEPTH: account__top_parent_name folds every subsidiary\ninto the top parent (Red Hat LLC's own acquisitions land under IBM)",
+		"Employer: account__account_name /\naccount__top_parent_name",
+		"account__top_parent_name for the whole company (recipe 6); speakers carry no\naccount entity",
+		"on non-activity metrics a subtree is project__project_path LIKE '%/<slug>/%'",
+		"cross-domain joins no standard metric or\n  dimension expresses",
 		"already resolved to the parent account FOR THAT PROJECT",
 		// where each domain attaches
 		"ATTACHMENT LEVELS",
@@ -235,7 +241,7 @@ func TestSemanticLayerGuidanceContent(t *testing.T) {
 		"an AT-DATE family (memberships, member_organizations,\npaying_member_organizations, maintainers, project_health, software_value)\nreports the state on end_date",
 		"no lens call needed",
 		"Every date is a UTC calendar day",
-		"separate and combined cover a named node's tree and a company's subsidiaries\nat ANY depth",
+		"separate and combined cover a named node's tree and a company's subsidiaries\nat ANY depth. Results come back",
 		"maintainer_contributions (by=project or by=org",
 		"PEOPLE is maintainer_contributions by=maintainer",
 		"query_lfx_standard_metrics",

@@ -12,13 +12,11 @@ Dimension qualified_names are entity__field, prefix per metric — copy from exp
 - When a family in the standard-metrics inventory answers the question,
   call query_lfx_standard_metrics directly; do not explore this layer or the
   lens first to see what is there. The families are governed metrics named
-  in plain words (contributors by=org, memberships by=tier...) and reach a
-  company's subsidiaries and a project's tree at ANY depth, which this layer
-  does not (see REACH under Scope). Inventory:
+  in plain words (contributors by=org, memberships by=tier...). Inventory:
   read_lfx_standard_metrics_guidance.
 - explore_lfx_semantic_layer discovers metrics, dimensions and stored values; query_lfx_semantic_layer runs the query. Explore first.
-- query_lfx_lens (text-to-SQL): cross-domain joins and hierarchy questions no
-  standard metric expresses — label its answers as generated SQL. Membership
+- query_lfx_lens (text-to-SQL): cross-domain joins no standard metric or
+  dimension expresses — label its answers as generated SQL. Membership
   counts as of a past date or by year, social listening aggregates, event,
   training and health figures, and people rankings (top contributors, top
   maintainers) are standard metrics, not lens questions.
@@ -90,7 +88,8 @@ dimension by what the question names:
   activity_project_id__project_spine_slug — identical totals to foundation_slug
   (verified) and the surface PCC-style foundation rollups reconcile against.
   spine_hierarchy_level = 2 lists direct children
-  ("Direct children of X": spine slug = X + level 2, group by project slug).
+  ("Direct children of X": spine slug = X + level 2, group by project slug);
+  on non-activity metrics a subtree is project__project_path LIKE '%/<slug>/%'.
 - SUM METRICS (insertions, deletions): ALWAYS the spine filter — non-hierarchical
   filters inflate them severalfold. Walk-downs are flattened: counts only, never sums.
 - ATTACHMENT LEVELS: memberships and event registrations attach at FOUNDATION
@@ -109,21 +108,13 @@ dimension by what the question names:
 - Twins exist (risc-v-international/riscv, cff/cloud-foundry,
   opensearch-foundation/opensearch-project): low total → group by the slug.
   Compare entities with IN (...) + group_by; never total across spine groups.
-- REACH — how deep this layer's own dimensions go, and where to go instead:
-  ACCOUNTS: account__account_rollup_name is ONE hop (an account's direct
-  parent), so filtering or grouping on it covers a company's DIRECT
-  subsidiaries only. PROJECTS: project__foundation_slug covers a foundation
-  completely; project__parent_project_slug covers a node below foundation
-  level ONE level down (its direct children); only the activity spine
-  (activity_project_id__project_spine_slug) reaches any depth, and only on
-  activities (contributors, contributions), so a subproject's whole subtree
-  is in reach for contribution questions but NOT for memberships,
-  maintainers or health. When the question means the whole company or the
-  whole subtree, that is a standard metric (subsidiaries / subprojects separate or
-  combined walk to the bottom on every recipe) or, for a shape no standard
-  metric has, query_lfx_lens. Use this layer's one-hop and one-level
-  dimensions when the question asks exactly for direct subsidiaries or
-  direct children, and say so in the answer only then.
+- REACH — how deep this layer's own dimensions go: the whole company at any
+  depth is account__top_parent_name (account__account_id_path LIKE
+  '%/<id>/%' for exact identity); account__account_rollup_name is ONE hop,
+  for direct subsidiaries only. The whole subtree on any model is
+  project__project_path LIKE '%/<slug>/%' (project__project_depth for
+  levels); project__parent_project_slug is one level. Speakers and meeting
+  attendance carry no account entity.
 
 ## Windows
 
@@ -182,19 +173,17 @@ SUBSIDIARY's name returns only what rolls up to THAT subsidiary: a small,
 plausible-looking answer that excludes the subsidiary's own row, which sits
 under the top parent (Red Hat LLC is itself a rollup parent, while its own row
 sits under International Business Machines Corporation). Always filter the TOP
-parent, or group by the rollup; to see one subsidiary alone filter
+parent, or group by account__top_parent_name; to see one subsidiary alone filter
 account__account_name. Legal names do not contain the acronym:
 value-searching 'IBM' finds accounts SPELLED with it, mostly regional or
 stray accounts that are their OWN rollup and NOT folded under the parent —
 present those separately rather than as part of it. Additive metrics (dues,
 volumes) may be summed across accounts sharing a rollup; headcounts may NOT —
 re-read them at rollup grain. No rollup dimension → sum named sub-entities
-and list them. ONE HOP: the parent link is a single hop, so an "including
-subsidiaries" figure built here covers a top parent's DIRECT subsidiaries but
-not their own acquisitions (an account rolling up to Red Hat LLC is not
-folded into IBM) — for the whole company at any depth use the standard
-metric (subsidiaries=combined), and build it here only when the question
-asks for direct subsidiaries alone. On ACTIVITIES the
+and list them. ANY DEPTH: account__top_parent_name folds every subsidiary
+into the top parent (Red Hat LLC's own acquisitions land under IBM);
+account__account_rollup_name is one hop — use it only for direct
+subsidiaries. On ACTIVITIES the
 account is already resolved to the parent account FOR THAT PROJECT before the
 rollup applies, so a contribution row's Salesforce account can differ from the
 account on the source record; organization_name stays the crowd.dev spelling
@@ -237,7 +226,8 @@ headcount (contributors by=project).
 11. MAINTAINERS. One project: maintainer_key__project_slug ('k8s' returns the
 real roster; cm_project_grandparents_slug = 'k8s' returns ZERO — the cm_*
 rollups hold foundation ancestry, verified live). Foundations:
-project__foundation_slug. ALWAYS add maintainer_key__is_lf_project = true: the
+project__foundation_slug. Employer: account__account_name /
+account__top_parent_name. ALWAYS add maintainer_key__is_lf_project = true: the
 maintainers model also holds maintainers of non-LF projects crowd.dev tracks
 (about half the rows) and they carry a project slug too, so a slug filter alone
 does not exclude them; the maintainer standard metrics have this filter
@@ -269,7 +259,7 @@ exceed 1 on a small slice). SLICES: primary_key__meeting_type (carries both a
 primary_key__committee_name, primary_key__meeting_name, primary_key__invitee_role,
 primary_key__invitee_voting_status. PROJECTS through the conformed entity:
 project__foundation_slug for a foundation, project__slug for one project,
-project__parent_project_slug one level down. ORGANIZATIONS:
+project__project_path LIKE '%/<slug>/%' for a subtree. ORGANIZATIONS:
 primary_key__account_name is the invitee's account as the source spelled it —
 there is no account entity, so no rollup, no subsidiaries, and recipe 6's
 acronym trap applies; two buckets are not companies: '' (no account) and
@@ -290,7 +280,7 @@ types — filter sponsorship__sponsorship_tier_type = 'package_tier' for
 package-only figures ('a_la_carte' and 'billing_adjustment' are the others).
 ACCOUNT LENS: the account entity spans registrations, sponsorships and
 enrollments — group or filter account__account_name, or
-account__account_rollup_name for the parent (recipe 6); speakers carry no
+account__top_parent_name for the whole company (recipe 6); speakers carry no
 account entity. ATTACHMENT: all three attach at foundation level, so
 scope them with project__foundation_slug; a leaf project's own slug returns NOTHING,
 which is the attachment, not missing data. TIME AXES: registrations
@@ -341,8 +331,7 @@ start_date is the trailing 365 days; every result carries an applied block
 saying which scope, dates and definition ran. A briefing usually wants the
 headline and the breakdown — two calls. DEPTH: on every standard metric,
 separate and combined cover a named node's tree and a company's subsidiaries
-at ANY depth — deeper than this layer's own dimensions reach (REACH, above).
-Results come back in the same words (account, parent_org, project,
+at ANY depth. Results come back in the same words (account, parent_org, project,
 foundation, period), and order_by takes them.
 There is no free filter on a standard metric: a slice the switches, the dates and
 the period cannot express is an explore + query question, and its answer is
@@ -359,9 +348,9 @@ social_listening_positive_mentions and social_listening_negative_mentions
 social_listening_total_author_followers (the authors' follower counts summed;
 NULL for older records and platforms without follower data, so a floor) and
 social_listening_avg_author_followers. SCOPE: mention_key__project_slug is
-the project a mention resolved to — a leaf's own mentions, no subtree;
-project__foundation_slug covers a foundation, project__parent_project_slug
-one level. Never let scope default: no filter means ALL of LF, and a
+the project a mention resolved to — a leaf's own mentions;
+project__foundation_slug covers a foundation, project__project_path LIKE
+'%/<slug>/%' a subtree. Never let scope default: no filter means ALL of LF, and a
 foundation filter nobody asked for is a silent undercount — say which scope
 ran. SLICES: mention_key__social_network (stored as 'Twitter', not 'X';
 'Reddit', 'Bluesky', 'News', 'Podcasts', 'DEV', 'Hacker News', 'LinkedIn',
