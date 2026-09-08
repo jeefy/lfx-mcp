@@ -22,18 +22,6 @@ func DefaultScopes() []string {
 	return []string{"openid", "profile", "email", ScopeRead, ScopeManage}
 }
 
-// EnforcedScopes returns the scopes actually checked by the server when
-// gating tool registration (see newServer() in cmd/lfx-mcp-server/main.go).
-// Unlike DefaultScopes, this excludes standard OIDC identity scopes (openid,
-// profile, email) since those aren't required for resource access. It's used
-// to populate the "scope" parameter on the WWW-Authenticate challenge per the
-// MCP authorization spec's "Scope Selection Strategy", giving clients
-// immediate guidance on which scopes to request instead of only discovering
-// them via the Protected Resource Metadata's scopes_supported field.
-func EnforcedScopes() []string {
-	return []string{ScopeRead, ScopeManage}
-}
-
 // ValidateScopes checks a configured scope list for unrecognised entries and
 // returns it unchanged. It logs a warning for any scope that is neither an
 // enforced scope nor a standard OIDC scope — those will be advertised via the
