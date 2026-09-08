@@ -21,6 +21,7 @@ Dimension qualified_names are entity__field, prefix per metric — copy from exp
   training and health figures, and people rankings (top contributors, top
   maintainers) are standard metrics, not lens questions.
 - Committee/board/ambassador rosters: committee tools. Meeting lists and one meeting's details: meeting tools. Counts of meetings and participants with the caller's visibility: count_lfx_resources and search_past_meeting_participants (recipe 12). Meeting ATTENDANCE aggregates are in this layer (recipe 12).
+- How many projects a foundation or parent has: this layer's project metrics count the authoritative project directory; search_projects and count_lfx_resources count only projects onboarded into LFX v2 and can be lower — use the tools to resolve names and slugs, the layer for the number.
 - Where this layer and the standard metrics read differently (both are
   right; say which one you used): dates are UTC calendar days on the
   standard metrics and the session clock on ad hoc windows here, so a window

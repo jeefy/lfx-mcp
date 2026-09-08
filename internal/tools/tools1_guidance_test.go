@@ -9,6 +9,21 @@ import (
 	"testing"
 )
 
+func TestTools1GuidanceRoutesDirectoryProjectCounts(t *testing.T) {
+	_, routing, found := strings.Cut(semanticLayerGuidance, "## Routing\n")
+	if !found {
+		t.Fatal("guidance is missing its routing section")
+	}
+	routing, _, found = strings.Cut(routing, "\n## Protocol")
+	if !found {
+		t.Fatal("guidance is missing its protocol section after routing")
+	}
+	const want = "How many projects a foundation or parent has: this layer's project metrics count the authoritative project directory; search_projects and count_lfx_resources count only projects onboarded into LFX v2 and can be lower — use the tools to resolve names and slugs, the layer for the number."
+	if !strings.Contains(strings.Join(strings.Fields(routing), " "), want) {
+		t.Error("routing must distinguish directory project counts from onboarded v2 project lookups")
+	}
+}
+
 // TestTools1GuidanceDistinguishesCountsFromPagedListings pins the tool
 // contracts in recipe 12: the listing route is not a count/completeness API.
 func TestTools1GuidanceDistinguishesCountsFromPagedListings(t *testing.T) {

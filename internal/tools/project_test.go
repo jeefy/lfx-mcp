@@ -192,12 +192,31 @@ func TestSearchProjects_IncludeTotalCountErrorDegradesToPage(t *testing.T) {
 	}
 }
 
+func TestSearchProjects_IndexScopeDescriptionAndSchema(t *testing.T) {
+	tool := listRegisteredTool(t, "search_projects", RegisterSearchProjects)
+	t.Logf("search_projects description: %d UTF-8 bytes", len(tool.Description))
+	const want = "include_total adds total and total_complete (the count over the projects indexed in LFX v2 and visible to the caller, not the authoritative project directory; false means a lower bound)"
+	if !strings.Contains(tool.Description, want) {
+		t.Error("project totals must disclose index/caller scope rather than directory coverage")
+	}
+	schema, ok := tool.InputSchema.(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected schema type %T", tool.InputSchema)
+	}
+	properties, _ := schema["properties"].(map[string]any)
+	includeTotal, _ := properties["include_total"].(map[string]any)
+	const wantSchema = "Also return total (count of matching projects indexed in LFX v2 and visible to the caller, not the authoritative project directory) and total_complete (false means a lower bound)"
+	if got := includeTotal["description"]; got != wantSchema {
+		t.Errorf("include_total schema must disclose index scope and lower bounds: got %q", got)
+	}
+}
+
 func TestSearchProjectsDescriptionMentionsEachNewParameter(t *testing.T) {
 	tool := listRegisteredTool(t, "search_projects", RegisterSearchProjects)
 	if n := len(tool.Description); n > 1000 {
 		t.Errorf("description is %d bytes, keep it under 1000", n)
 	}
-	for _, want := range []string{"slug", "name_exact", "legal_parent_uid", "include_total", "total_complete", "caller's visibility"} {
+	for _, want := range []string{"slug", "name_exact", "legal_parent_uid", "include_total", "total_complete", "indexed in LFX v2", "visible to the caller", "not the authoritative project directory"} {
 		if !strings.Contains(tool.Description, want) {
 			t.Errorf("description missing %q", want)
 		}
