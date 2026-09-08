@@ -51,7 +51,7 @@ type projectGetResult struct {
 func RegisterSearchProjects(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "search_projects",
-		Description: "Search for LFX projects using the LFX query service. name is a typeahead match; slug is an exact project slug (e.g. c2pa-fund); name_exact matches the stored project name exactly (case-sensitive); parent_uid lists the children of a foundation or umbrella project; legal_parent_uid lists the projects under one legal entity. include_total adds total and total_complete (the count over the projects indexed in LFX v2 and visible to the caller, not the authoritative project directory; false means a lower bound). The Linux Foundation's own entry (slug tlf) is one project bucket, not the LF-wide scope. LF-wide questions take no project on the query tools, query_lfx_lens included (omit project_slugs); pass project_slugs only to restrict to named projects.",
+		Description: "Search for LFX projects using the LFX query service. name is a typeahead match; slug is an exact project slug (e.g. c2pa-fund); name_exact matches the stored project name exactly (case-sensitive); parent_uid lists the direct children (which may themselves have children) of a foundation or umbrella project; legal_parent_uid lists the projects under one legal entity. include_total adds total (over projects indexed in LFX v2 and visible to the caller, not the authoritative project directory) and total_complete (false means total is a lower bound). The Linux Foundation's own entry (slug tlf) is one project bucket, not the LF-wide scope. LF-wide questions take no project on the query tools, query_lfx_lens included (omit project_slugs); pass project_slugs only to restrict to named projects.",
 		Annotations: &mcp.ToolAnnotations{
 			Title:        "Search Projects",
 			ReadOnlyHint: true,
@@ -76,9 +76,9 @@ type SearchProjectsArgs struct {
 	Name           string `json:"name,omitempty" jsonschema:"Name or partial name of the project to search for (typeahead)"`
 	Slug           string `json:"slug,omitempty" jsonschema:"Exact project slug, e.g. c2pa-fund"`
 	NameExact      string `json:"name_exact,omitempty" jsonschema:"Exact stored project name, case-sensitive"`
-	ParentUID      string `json:"parent_uid,omitempty" jsonschema:"Optional UID of a foundation or umbrella project to filter child projects by"`
+	ParentUID      string `json:"parent_uid,omitempty" jsonschema:"UID of a foundation or umbrella project whose direct children to list"`
 	LegalParentUID string `json:"legal_parent_uid,omitempty" jsonschema:"UID of the legal parent entity whose projects to list"`
-	IncludeTotal   bool   `json:"include_total,omitempty" jsonschema:"Also return total (count of matching projects indexed in LFX v2 and visible to the caller, not the authoritative project directory) and total_complete (false means a lower bound)"`
+	IncludeTotal   bool   `json:"include_total,omitempty" jsonschema:"Also return total (matching projects indexed in LFX v2 and visible to the caller, not the authoritative project directory) and total_complete (false means total is a lower bound)"`
 	PageSize       int    `json:"page_size,omitempty" jsonschema:"Number of results per page (default 10, max 100)"`
 	PageToken      string `json:"page_token,omitempty" jsonschema:"Opaque pagination token from a previous search response"`
 }
