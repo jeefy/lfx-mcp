@@ -192,11 +192,11 @@ and the two vocabularies never mix in one answer.
 7. TIER LITERALS differ per foundation ('Premier Membership' vs 'Premier Member') — get_dimension_values per foundation, never reuse.
 
 8. HEALTH SCORES are daily snapshots: find the latest health-bearing date
-({{ Dimension('health_metric_key__health_score_category_v2') }} IS NOT NULL),
-filter to it, then aggregate; unfiltered grouping inflates severalfold. Categories
+({{ Dimension('health_metric_key__has_health_score_v2') }} = true), filter to
+it, then aggregate; unfiltered grouping inflates severalfold. Categories
 are the stored v2 band names (Excellent, Healthy, Fair, Concerning, Critical):
 group by them, never by a threshold; the v2 category can be NULL on a scored
-row, so scored projects are counted on the score, never on the label. For
+row, so scored projects are counted on the flag, never on the label. For
 "current" or "today" health with no date, current_project_health_count,
 current_avg_health_score and current_software_value (on
 silver_fact_project_health_latest) read each project's own latest snapshot

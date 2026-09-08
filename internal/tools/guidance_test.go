@@ -140,7 +140,7 @@ func TestSemanticLayerGuidanceContent(t *testing.T) {
 		"subsidiaries INTO parents",
 		// tiers, health, value
 		"Premier Membership",
-		"health_metric_key__health_score_category_v2') }} IS NOT NULL",
+		"health_metric_key__has_health_score_v2') }} = true",
 		"(Excellent, Healthy, Fair, Concerning, Critical)",
 		"current_avg_health_score and current_software_value",
 		"read each project's own latest snapshot\nwithout a pin — a different population from the pinned day's (each project on\nits own date, so \"current\" is not \"today's reading\")",
