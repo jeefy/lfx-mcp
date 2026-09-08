@@ -8,8 +8,7 @@ question re-run gives the same figure. When one matches the question, prefer
 it over the explore+query flow, and never rewrite it as an ad-hoc query just
 to sort, filter or scope it — order_by, the scope switches and the dates do
 that on the governed recipe. A standard metric reaches a project's tree and a
-company's subsidiaries AT ANY DEPTH, which the explore+query flow does not
-(see "Organizations" and "Projects" below).
+company's subsidiaries AT ANY DEPTH (see "Organizations" and "Projects" below).
 
 ## Resolve names first — ALWAYS
 
@@ -220,7 +219,7 @@ series adds `period` in front; an at-date series adds `period_end` too.
 | contributing_organizations | window | total, project | Distinct organizations credited with a code contribution | [project, project_name,] total_contributing_organizations | Organizations from the enrichment vocabulary, not CRM accounts; a distinct count: never sum rows |
 | participants | window | total, org, project | Distinct non-bot people with any activity in the window: code, issues, reviews, comments, stars, forks, meeting invitations and attendance, training and exams, Hacker News | [...,] total_participants | The broadest people count: contributors = code, participants = anyone who did anything; distinct people: never sum rows |
 | maintainers | at-date | total, org, project, maintainer | Active maintainers today (LF projects only); with period, today's roster active in each period | [account / foundation, project, project_name / project, project_name, maintainer, account, role,] active_maintainers | Distinct people; LF projects only: an ad hoc count over the whole maintainers index reads higher; the NULL account row is maintainers with no resolved employer; today only unless period; by=maintainer has no series |
-| maintainer_contributions | window | total, org, project, maintainer | Code contributions by people on the CURRENT maintainer roster of the activity's project | [...,] maintainer_contributions[, contributing_maintainers] | Maintainership as of the build, contributions in the window; maintainer_contributions is additive, contributing_maintainers a distinct count; "share of work" is this over contributions for the same scope and window |
+| maintainer_contributions | window | total, org, project, maintainer | Code contributions by people on the maintainer roster of the activity's project | [...,] maintainer_contributions[, contributing_maintainers] | Maintainership as of the build (applied.definition says which roster this call read), contributions in the window; maintainer_contributions is additive, contributing_maintainers a distinct count; "share of work" is this over contributions for the same scope and window |
 | project_health | at-date | total, foundation, category, population | Projects with a v2 health score and their mean score, on the latest snapshot on or before end_date | [foundation / category / population,] project_health_count, avg_project_health_score | The count, the categories and the average are v2 (the average normalized to a hundred-point scale on both engines; applied.definition says which column this call read); a scored project without a stored maximum counts in the total but not in the average; v2 snapshots have a short history; a subset of LF-hosted projects (applied.coverage); LF-hosted unless by=population (rows lf_hosted and index); category is the stored v2 band name (Excellent, Healthy, Fair, Concerning, Critical), never a threshold; a distinct-project count: never sum rows; a mean of project scores: never re-average |
 | software_value | at-date | total, foundation, population | COCOMO software value summed over each LF-hosted project's own latest snapshot row on or before end_date, whatever day that row is on | [foundation / population,] total_software_value | USD; not pinned to one day (applied.snapshot_date is null): each project as of its own latest row; a project whose latest row is a health-only day contributes nothing, so totals read low, never inflated — applied.coverage says how many LF-hosted projects carry a value; additive across projects, never across days |
 | event_registrations | window | total, event, org | Accepted registrations of events starting in the window, and the distinct people behind them | [event / account, parent_org,] total_registrations, total_unique_registrants, total_checked_in_attendees | The window is the EVENT start date (an ad hoc query by registration date reads differently); registrants and checked-in attendees are distinct people by email, not registrations: never sum them across rows; check-in data exists only for some registration sources, so an event whose source carries none shows zero attendees, not low attendance; by=org is the registrant's account, NULL = unattributed |
@@ -326,7 +325,7 @@ member organizations across the LF today", and the offer of memberships
   new_member_, lost_member_organizations) count distinct organizations, so
   rows of a breakdown never sum to the total. On any day but today, and on a
   series, an at-date membership reading is date-based (a few percent above
-  the status-based figure; applied.definition and engine say which): say "as
+  the status-based figure; applied.definition says which): say "as
   of <date>".
 - contributions by=contributor and maintainer_contributions by=maintainer
   rows are GitHub identities: `handle` is the stored identity (a profile
@@ -403,9 +402,9 @@ not retry the same one.
   by=project: the breakdown needs its grouping; combined folds the
   hierarchy and keeps the by rows; by=total is one figure.
 - since, until, as_of, group_by, where: rejected by the request schema as
-  an unexpected property before the family sees them; the message names only
-  the property you sent, so the replacement is the contract table above
-  (since and until are start_date and end_date; as_of is end_date).
+  an unexpected property before the family sees them; the message names the
+  replacement (since and until are start_date and end_date; as_of is
+  end_date).
 - org on a family whose model carries no account.
 - an order_by field that is not one of the result columns (the message
   lists them, minus any column the call folds away).
