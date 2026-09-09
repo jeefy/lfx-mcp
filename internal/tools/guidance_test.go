@@ -159,7 +159,9 @@ func TestSemanticLayerGuidanceContent(t *testing.T) {
 		"search_committee_members",
 		"Never infer a roster",
 		"search_past_meetings",
-		"attendance\nRECORDS, not unique people",
+		"meeting_occurrences (distinct occurrences held) and scheduled_meeting_minutes\n(sum of the scheduled duration",
+		"unique_attendees (distinct PEOPLE who attended",
+		"attendees_count (attendance RECORDS where the invitee attended",
 		"'Individual - No Account'",
 		"there is no account entity, so no rollup",
 		// events/training/sponsorships account entities and tiers

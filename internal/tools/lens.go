@@ -43,7 +43,7 @@ func RegisterQueryLFXLens(server *mcp.Server) {
 
 Use this tool ONLY as a FALLBACK: switch here only when the semantic layer genuinely cannot express the question - after discovery (list_metrics, get_dimensions, get_dimension_values), the read_lfx_semantic_layer_guidance recipes, and two differently-formulated queries have failed - or when a guidance document routes the question here directly (a cross-domain join; an org breakdown on a standard-metric family that rejects org: one query, as the guidance says). Zero rows or an unknown-name error is a discovery failure, not a reason to switch. Membership counts on any date or by year are the memberships standard metric (start_date/end_date/period), not this tool.
 
-Everything else - contributors, activities, memberships, events and sponsorships, registrations, education, maintainer rosters/counts/names, health, social listening (mentions, sentiment, reach) - is a standard metric first (query_lfx_standard_metrics; inventory in read_lfx_standard_metrics_guidance), then explore_lfx_semantic_layer + query_lfx_semantic_layer when no family fits. Committee/board rosters: the committee tools.
+Everything else - contributors, activities, memberships, events and sponsorships, registrations, education, maintainer rosters/counts/names, health, social listening (mentions, sentiment, reach), meeting totals (occurrences, scheduled minutes, attendees) - is a standard metric first (query_lfx_standard_metrics; inventory in read_lfx_standard_metrics_guidance), then explore_lfx_semantic_layer + query_lfx_semantic_layer when no family fits. Committee/board rosters: the committee tools.
 
 project_slugs is optional. Omit it for LF-wide questions: no project or foundation filter is applied. Pass exact slugs from search_projects to scope to them; several slugs are combined, so a JDF series plus its -fund parent, or a multi-foundation comparison, is one call. Unknown slugs are rejected. Every answer opens with the scope the caller gave.
 
@@ -250,7 +250,7 @@ func normalizeSlugs(slugs []string) ([]string, error) {
 // there before its first query.
 const exploreSemanticLayerDescription = `If a standard metric answers the question (inventory: read_lfx_standard_metrics_guidance), call query_lfx_standard_metrics and do not explore first.
 
-The LFX Semantic Layer is the query tool for LF data: contributor, contribution, membership, revenue, event, registration, speaker, sponsorship, enrollment, certification, maintainer, health, project and social listening (mentions, sentiment, reach) metrics, sliceable by country, region, parent organization or project tree. This discovers what can be measured; query_lfx_semantic_layer runs it. Start here unless exact names are known.
+The LFX Semantic Layer is the query tool for LF data: contributor, contribution, membership, revenue, event, registration, speaker, sponsorship, enrollment, certification, maintainer, health, project, meeting (occurrences, scheduled minutes, attendees) and social listening (mentions, sentiment, reach) metrics, sliceable by country, region, parent organization or project tree. This discovers what can be measured; query_lfx_semantic_layer runs it. Start here unless exact names are known.
 
 If you have not read read_lfx_semantic_layer_guidance yet this session, read it BEFORE using this tool; one read also covers query_lfx_semantic_layer.
 
