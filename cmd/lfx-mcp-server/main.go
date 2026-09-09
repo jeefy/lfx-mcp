@@ -164,6 +164,9 @@ var defaultTools = []string{
 	"query_lfx_semantic_layer",
 	"read_lfx_semantic_layer_guidance",
 	"search_b2b_orgs",
+	// TOOLS-1 (LFXV2-2891): caller-visibility counts and governance/meeting lookups.
+	"count_lfx_resources",
+	"get_org_committee_seats",
 }
 
 var logger *slog.Logger
@@ -396,6 +399,9 @@ func main() {
 					Clients: sharedClients,
 				})
 				tools.SetMeetingConfig(&tools.MeetingConfig{
+					Clients: sharedClients,
+				})
+				tools.SetOrgSeatsConfig(&tools.OrgSeatsConfig{
 					Clients: sharedClients,
 				})
 			}
@@ -749,7 +755,7 @@ func newServer(cfg Config, serviceName string, callerToken *auth.TokenInfo) *mcp
 		tools.RegisterGetMeetingRegistrant(server)
 	}
 	if enabledTools["search_past_meeting_participants"] && canRead {
-		tools.RegisterSearchPastMeetingParticipants(server)
+		tools.RegisterSearchPastMeetingParticipants(server, cfg.CommitteesAsGroups)
 	}
 	if enabledTools["get_past_meeting_participant"] && canRead {
 		tools.RegisterGetPastMeetingParticipant(server)
@@ -768,6 +774,15 @@ func newServer(cfg Config, serviceName string, callerToken *auth.TokenInfo) *mcp
 	}
 	if enabledTools["search_b2b_orgs"] && canRead {
 		tools.RegisterSearchB2bOrgs(server)
+	}
+
+	// TOOLS-1 (LFXV2-2891) tools. Registered under canRead, not isStaff: they
+	// carry the caller's own visibility through the exchanged token.
+	if enabledTools["count_lfx_resources"] && canRead {
+		tools.RegisterCountLFXResources(server)
+	}
+	if enabledTools["get_org_committee_seats"] && canRead {
+		tools.RegisterGetOrgCommitteeSeats(server)
 	}
 
 	// Service API tools.

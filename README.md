@@ -214,8 +214,14 @@ npx @modelcontextprotocol/inspector
 
 | Tool              | Description                                                   |
 |-------------------|---------------------------------------------------------------|
-| `search_projects` | Search for LFX projects by name with typeahead and pagination |
+| `search_projects` | Search LFX projects by name (typeahead), exact slug or exact name, optionally scoped to a parent or legal parent; include_total returns the count of indexed, caller-visible projects |
 | `get_project`     | Get a project's base info and settings by UID                 |
+
+### Resource Counts
+
+| Tool                  | Description |
+|-----------------------|-------------|
+| `count_lfx_resources` | Count indexed LFX v2 records (meetings, participants, committees, members, projects) visible to the caller; complete=false means a lower bound |
 
 ### Committees
 
@@ -232,6 +238,7 @@ npx @modelcontextprotocol/inspector
 | `create_committee_member`   | Add a new member to a committee                                                           |
 | `update_committee_member`   | Update an existing committee member's information                                         |
 | `delete_committee_member`   | Remove a member from a committee                                                          |
+| `get_org_committee_seats`   | Summarise an organisation's committee seats across a foundation and its direct child projects; filter by category, optionally list the seats |
 
 ### Mailing Lists
 
@@ -270,7 +277,7 @@ npx @modelcontextprotocol/inspector
 |------------------------------------|-------------------------------------------------------------------------|
 | `search_past_meetings`             | Search past meetings; filter by project, committee, date range          |
 | `get_past_meeting`                 | Get a past meeting by UID                                               |
-| `search_past_meeting_participants` | Search past meeting participants; filter by meeting, committee, project |
+| `search_past_meeting_participants` | Search past meeting participants; filter by meeting, committee, project, date range, attended_only or organisation name; count_only returns record counts; people are de-duplicated by identity like LFX Self Serve (dedupe=false returns raw records) |
 | `get_past_meeting_participant`     | Get a past meeting participant by UID                                   |
 | `search_past_meeting_summaries`    | Search past meeting summaries; filter by meeting, committee, project    |
 | `get_past_meeting_summary`         | Get a past meeting summary by UID                                       |

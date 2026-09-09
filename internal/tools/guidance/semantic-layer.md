@@ -20,9 +20,8 @@ Dimension qualified_names are entity__field, prefix per metric — copy from exp
   counts as of a past date or by year, social listening aggregates, event,
   training and health figures, and people rankings (top contributors, top
   maintainers) are standard metrics, not lens questions.
-- Committee/board/ambassador rosters: committee tools. Meeting lists and one
-  meeting's details: meeting tools. Meeting ATTENDANCE aggregates are in this
-  layer (recipe 12).
+- Committee/board/ambassador rosters: committee tools. Meeting lists and one meeting's details: meeting tools. Counts of meetings and participants with the caller's visibility: count_lfx_resources and search_past_meeting_participants (recipe 12). Meeting ATTENDANCE aggregates are in this layer (recipe 12).
+- How many projects a foundation or parent has: this layer's project metrics count the authoritative project directory; search_projects and count_lfx_resources count only projects onboarded into LFX v2 and can be lower — use the tools to resolve names and slugs, the layer for the number.
 - Where this layer and the standard metrics read differently (both are
   right; say which one you used): dates are UTC calendar days on the
   standard metrics and the session clock on ad hoc windows here, so a window
@@ -265,7 +264,7 @@ primary_key__account_name is the invitee's account as the source spelled it —
 there is no account entity, so no rollup, no subsidiaries, and recipe 6's
 acronym trap applies; two buckets are not companies: '' (no account) and
 'Individual - No Account' — report both as unattributed. No standard metric
-covers meetings: compose them here and label the figure ad hoc.
+covers meetings: compose them here and label the figure ad hoc. TWO ROUTES, TWO DEFINITIONS. search_past_meetings returns a paged listing. count_lfx_resources provides meeting counts and search_past_meeting_participants with count_only=true provides participant counts; both count what the caller's identity may see, the same visibility as LFX Self Serve, and say whether the count is complete; this layer's attendance model counts attendance records across every meeting in the warehouse with no per-caller visibility. The two differ by design and neither is wrong. Cite a tool figure as 'meetings (or participants) visible to you' and a layer figure as 'attendances, all meetings, interim'; never reconcile one against the other; prefer the tools for any question about a project's or committee's own meetings, and the layer only for an aggregate by company, committee type or meeting type over a period. The meeting tools take date_from and date_to, inclusive, with date-only values read as UTC day boundaries; the standard metrics say the same thing as start_date and end_date. Seats for an organisation come from get_org_committee_seats, complete for the scope and gated on the organisation grant; the committee models in this layer carry no per-user access and are not the route for an organisation's seats.
 
 13. REGIONS. country__* follows the person; organization_lf_region etc. follow the org's HQ.
 

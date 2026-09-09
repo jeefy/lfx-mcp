@@ -111,10 +111,16 @@ var staffOnlyTools = []string{
 // with every name in staffOnlyTools enabled.
 func listedTools(t *testing.T, token *auth.TokenInfo) map[string]bool {
 	t.Helper()
+	return listedToolsFor(t, staffOnlyTools, token)
+}
+
+// listedToolsFor is listedTools over an explicit enabled-tool list.
+func listedToolsFor(t *testing.T, enabled []string, token *auth.TokenInfo) map[string]bool {
+	t.Helper()
 	if logger == nil {
 		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
-	server := newServer(Config{Tools: staffOnlyTools}, "test", token)
+	server := newServer(Config{Tools: enabled}, "test", token)
 
 	ctx := context.Background()
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
@@ -380,5 +386,26 @@ func TestChallengeScopeWriter_Flush(t *testing.T) {
 	flusher.Flush()
 	if !rec.Flushed {
 		t.Error("Flush did not reach the underlying ResponseWriter")
+	}
+}
+
+// TestNewServer_Tools1AreReadScoped pins the TOOLS-1 registrations: the two
+// new tools carry the caller's own visibility through the exchanged token, so
+// they are listed for any read-scoped caller (staff or not) and absent for a
+// token without read scope.
+func TestNewServer_Tools1AreReadScoped(t *testing.T) {
+	tools1 := []string{"count_lfx_resources", "get_org_committee_seats"}
+	reader := &auth.TokenInfo{Scopes: []string{tools.ScopeRead}}
+	noScope := &auth.TokenInfo{Scopes: []string{}}
+
+	forReader := listedToolsFor(t, tools1, reader)
+	forNoScope := listedToolsFor(t, tools1, noScope)
+	for _, name := range tools1 {
+		if !forReader[name] {
+			t.Errorf("%s must be listed for a non-staff read-scoped caller", name)
+		}
+		if forNoScope[name] {
+			t.Errorf("%s must not be listed without read scope", name)
+		}
 	}
 }
