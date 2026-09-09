@@ -409,3 +409,91 @@ func TestNewServer_Tools1AreReadScoped(t *testing.T) {
 		}
 	}
 }
+
+// TestNewServer_ScopeBlindClientGetsReadOnly covers clients that ignore the
+// scopes advertised in the PRM and the WWW-Authenticate challenge, and so
+// present a valid token carrying no MCP scope. They fall back to read-only
+// access rather than an empty tool list; manage tools stay hidden.
+func TestNewServer_ScopeBlindClientGetsReadOnly(t *testing.T) {
+	const readTool = "count_lfx_resources"
+	const manageTool = "create_committee"
+	enabled := []string{readTool, manageTool}
+
+	codexNoScopes := &auth.TokenInfo{
+		Scopes: []string{"offline_access"},
+		Extra: map[string]any{
+			tools.ClaimClientID: "https://chatgpt.com/oauth/codex/IrVFZga_egXz/client.json",
+		},
+	}
+	otherNoScopes := &auth.TokenInfo{
+		Scopes: []string{"offline_access"},
+		Extra: map[string]any{
+			tools.ClaimClientID: "https://example.com/oauth/client.json",
+		},
+	}
+
+	forCodex := listedToolsFor(t, enabled, codexNoScopes)
+	if !forCodex[readTool] {
+		t.Errorf("%s must be listed for a scope-blind client with no MCP scopes", readTool)
+	}
+	if forCodex[manageTool] {
+		t.Errorf("%s must not be listed without manage scope, even for a scope-blind client", manageTool)
+	}
+
+	forOther := listedToolsFor(t, enabled, otherNoScopes)
+	if forOther[readTool] || forOther[manageTool] {
+		t.Errorf("no tools may be listed for an unrecognised client with no MCP scopes, got %v", forOther)
+	}
+}
+
+func TestHasScopeParam(t *testing.T) {
+	tests := []struct {
+		name      string
+		challenge string
+		want      bool
+	}{
+		{
+			name:      "no scope parameter",
+			challenge: `Bearer resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource"`,
+			want:      false,
+		},
+		{
+			name:      "scope parameter present",
+			challenge: `Bearer resource_metadata="https://example.com/prm", scope="openid read:all"`,
+			want:      true,
+		},
+		{
+			name:      "scope is the first parameter",
+			challenge: `Bearer scope="openid"`,
+			want:      true,
+		},
+		{
+			// The reason for boundary matching: a quoted value mentioning
+			// scope= must not suppress the parameter we add.
+			name:      "scope mentioned inside a quoted value",
+			challenge: `Bearer error="invalid_token", error_description="try scope=read:all"`,
+			want:      false,
+		},
+		{
+			name:      "different parameter ending in scope",
+			challenge: `Bearer max_scope="read:all"`,
+			want:      false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := hasScopeParam(tc.challenge); got != tc.want {
+				t.Errorf("hasScopeParam(%q) = %v, want %v", tc.challenge, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestHasScopeParam_CaseInsensitive covers auth parameter names being
+// case-insensitive per RFC 9110.
+func TestHasScopeParam_CaseInsensitive(t *testing.T) {
+	if !hasScopeParam(`Bearer realm="x", Scope="openid"`) {
+		t.Error(`hasScopeParam did not match an uppercase Scope parameter`)
+	}
+}
