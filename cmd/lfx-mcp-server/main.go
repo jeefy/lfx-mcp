@@ -652,23 +652,30 @@ func newServer(cfg Config, serviceName string, callerToken *auth.TokenInfo) *mcp
 	// Some OAuth clients ignore the scopes advertised in our protected resource
 	// metadata and in the WWW-Authenticate challenge, so their tokens arrive
 	// with no MCP scope at all. Registering nothing leaves the user with an
-	// empty tool list and no error to act on, so fall back to read-only access.
-	// Holding a token for this audience already required a client grant, and
-	// read tools call the LFX APIs with the caller's own exchanged token, so
-	// per-user authorization still applies. ScopeManage is deliberately not
-	// granted this way: writes must always be requested explicitly.
+	// empty tool list and no error to act on, and these clients offer no way to
+	// choose scopes, so the omission carries no intent to withhold consent.
+	// Treat them as having requested the scopes we advertise, which is what a
+	// compliant client would have sent. Advertising a narrower set therefore
+	// narrows this fallback too. The client grant already authorises those
+	// scopes, and tools still enforce per-user authorization through the
+	// caller's own exchanged token.
 	//
 	// Reaching here with canRead false already implies the token carries neither
 	// ScopeRead nor ScopeManage.
 	if !canRead {
 		if clientID := tools.ClientID(callerToken); tools.IsScopeBlindClient(clientID) {
+			advertised := cfg.MCPAPI.Scopes
+			if len(advertised) == 0 {
+				advertised = tools.DefaultScopes()
+			}
+			canManage = tools.HasAnyScope(advertised, []string{tools.ScopeManage})
+			canRead = canManage || tools.HasAnyScope(advertised, []string{tools.ScopeRead})
 			// newServer runs per request, so this is logged at debug to avoid
 			// repeating a condition that is constant for the client.
 			logger.With(
 				"client_id", clientID,
-				"scopes", callerScopes,
-			).Debug("client requested no MCP scopes; granting read-only access")
-			canRead = true
+				"advertised_scopes", advertised,
+			).Debug("client requested no MCP scopes; granting the advertised scopes")
 		}
 	}
 

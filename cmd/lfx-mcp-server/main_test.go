@@ -117,10 +117,15 @@ func listedTools(t *testing.T, token *auth.TokenInfo) map[string]bool {
 // listedToolsFor is listedTools over an explicit enabled-tool list.
 func listedToolsFor(t *testing.T, enabled []string, token *auth.TokenInfo) map[string]bool {
 	t.Helper()
+	return listedToolsForConfig(t, Config{Tools: enabled}, token)
+}
+
+func listedToolsForConfig(t *testing.T, cfg Config, token *auth.TokenInfo) map[string]bool {
+	t.Helper()
 	if logger == nil {
 		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
-	server := newServer(Config{Tools: enabled}, "test", token)
+	server := newServer(cfg, "test", token)
 
 	ctx := context.Background()
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
@@ -410,40 +415,60 @@ func TestNewServer_Tools1AreReadScoped(t *testing.T) {
 	}
 }
 
-// TestNewServer_ScopeBlindClientGetsReadOnly covers clients that ignore the
-// scopes advertised in the PRM and the WWW-Authenticate challenge, and so
-// present a valid token carrying no MCP scope. They fall back to read-only
-// access rather than an empty tool list; manage tools stay hidden.
-func TestNewServer_ScopeBlindClientGetsReadOnly(t *testing.T) {
+// TestNewServer_ScopeBlindClientGetsAdvertisedScopes covers clients that ignore
+// the scopes advertised in the PRM and the WWW-Authenticate challenge, and so
+// present a valid token carrying no MCP scope. They are treated as having
+// requested the advertised set, since they offer no way to choose scopes.
+func TestNewServer_ScopeBlindClientGetsAdvertisedScopes(t *testing.T) {
 	const readTool = "count_lfx_resources"
 	const manageTool = "create_committee"
 	enabled := []string{readTool, manageTool}
 
-	codexNoScopes := &auth.TokenInfo{
-		Scopes: []string{"offline_access"},
-		Extra: map[string]any{
-			tools.ClaimClientID: "https://chatgpt.com/oauth/codex/IrVFZga_egXz/client.json",
-		},
-	}
-	otherNoScopes := &auth.TokenInfo{
-		Scopes: []string{"offline_access"},
-		Extra: map[string]any{
-			tools.ClaimClientID: "https://example.com/oauth/client.json",
-		},
+	codexToken := func() *auth.TokenInfo {
+		return &auth.TokenInfo{
+			Scopes: []string{"offline_access"},
+			Extra: map[string]any{
+				tools.ClaimClientID: "https://chatgpt.com/oauth/codex/IrVFZga_egXz/client.json",
+			},
+		}
 	}
 
-	forCodex := listedToolsFor(t, enabled, codexNoScopes)
-	if !forCodex[readTool] {
-		t.Errorf("%s must be listed for a scope-blind client with no MCP scopes", readTool)
-	}
-	if forCodex[manageTool] {
-		t.Errorf("%s must not be listed without manage scope, even for a scope-blind client", manageTool)
-	}
+	t.Run("advertising both scopes grants both", func(t *testing.T) {
+		listed := listedToolsFor(t, enabled, codexToken())
+		if !listed[readTool] {
+			t.Errorf("%s must be listed for a scope-blind client", readTool)
+		}
+		if !listed[manageTool] {
+			t.Errorf("%s must be listed for a scope-blind client when manage:all is advertised", manageTool)
+		}
+	})
 
-	forOther := listedToolsFor(t, enabled, otherNoScopes)
-	if forOther[readTool] || forOther[manageTool] {
-		t.Errorf("no tools may be listed for an unrecognised client with no MCP scopes, got %v", forOther)
-	}
+	t.Run("advertising only read grants only read", func(t *testing.T) {
+		cfg := Config{
+			Tools:  enabled,
+			MCPAPI: MCPAPIConfig{Scopes: []string{"openid", tools.ScopeRead}},
+		}
+		listed := listedToolsForConfig(t, cfg, codexToken())
+		if !listed[readTool] {
+			t.Errorf("%s must be listed when read:all is advertised", readTool)
+		}
+		if listed[manageTool] {
+			t.Errorf("%s must not be listed when manage:all is not advertised", manageTool)
+		}
+	})
+
+	t.Run("unrecognised client gets nothing", func(t *testing.T) {
+		other := &auth.TokenInfo{
+			Scopes: []string{"offline_access"},
+			Extra: map[string]any{
+				tools.ClaimClientID: "https://example.com/oauth/client.json",
+			},
+		}
+		listed := listedToolsFor(t, enabled, other)
+		if listed[readTool] || listed[manageTool] {
+			t.Errorf("no tools may be listed for an unrecognised client with no MCP scopes, got %v", listed)
+		}
+	})
 }
 
 func TestHasScopeParam(t *testing.T) {

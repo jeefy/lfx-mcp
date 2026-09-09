@@ -39,9 +39,8 @@ var scopeBlindClientIDPrefixes = []string{
 }
 
 // IsScopeBlindClient reports whether clientID belongs to a client known to
-// ignore advertised scopes. Callers use this to grant read access to tokens
-// that carry no MCP scope at all; it must never be used to grant ScopeManage,
-// which stays an explicit opt-in.
+// ignore advertised scopes. Callers use this to decide whether a token carrying
+// no MCP scope should be treated as having requested the advertised set.
 func IsScopeBlindClient(clientID string) bool {
 	for _, prefix := range scopeBlindClientIDPrefixes {
 		if strings.HasPrefix(clientID, prefix) {
