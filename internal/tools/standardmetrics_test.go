@@ -668,13 +668,13 @@ func TestStandardMetrics_LegacyNamesAreRejectedAtTheSchema(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ss.Close()
+	t.Cleanup(func() { _ = ss.Close() })
 	client := mcp.NewClient(&mcp.Implementation{Name: "c", Version: "0"}, nil)
 	cs, err := client.Connect(context.Background(), ct, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cs.Close()
+	t.Cleanup(func() { _ = cs.Close() })
 	for _, legacy := range []string{"since", "until", "as_of"} {
 		res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
 			Name:      "query_lfx_standard_metrics",

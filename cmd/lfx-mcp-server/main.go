@@ -16,6 +16,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -647,6 +648,37 @@ func newServer(cfg Config, serviceName string, callerToken *auth.TokenInfo) *mcp
 	}
 	canManage := callerToken == nil || tools.HasAnyScope(callerScopes, []string{tools.ScopeManage})
 	canRead := callerToken == nil || canManage || tools.HasAnyScope(callerScopes, []string{tools.ScopeRead})
+
+	// Some OAuth clients ignore the scopes advertised in our protected resource
+	// metadata and in the WWW-Authenticate challenge, so their tokens arrive
+	// with no MCP scope at all. Registering nothing leaves the user with an
+	// empty tool list and no error to act on, and these clients offer no way to
+	// choose scopes, so the omission carries no intent to withhold consent.
+	// Treat them as having requested the scopes we advertise, which is what a
+	// compliant client would have sent. Advertising a narrower set therefore
+	// narrows this fallback too. The client grant already authorises those
+	// scopes, and tools still enforce per-user authorization through the
+	// caller's own exchanged token.
+	//
+	// Reaching here with canRead false already implies the token carries neither
+	// ScopeRead nor ScopeManage.
+	if !canRead {
+		if clientID := tools.ClientID(callerToken); tools.IsScopeBlindClient(clientID) {
+			advertised := cfg.MCPAPI.Scopes
+			if len(advertised) == 0 {
+				advertised = tools.DefaultScopes()
+			}
+			canManage = tools.HasAnyScope(advertised, []string{tools.ScopeManage})
+			canRead = canManage || tools.HasAnyScope(advertised, []string{tools.ScopeRead})
+			// newServer runs per request, so this is logged at debug to avoid
+			// repeating a condition that is constant for the client.
+			logger.With(
+				"client_id", clientID,
+				"advertised_scopes", advertised,
+			).Debug("client requested no MCP scopes; granting the advertised scopes")
+		}
+	}
+
 	isStaff := callerToken == nil || tools.IsLFStaff(callerToken)
 
 	// Register tools based on configuration and caller scopes.
@@ -911,8 +943,8 @@ func runHTTPServer(cfg Config, otelCfg localOtel.Config, otelShutdown func(conte
 	// so the two can never drift.
 	var scopesSupported []string
 	if len(cfg.MCPAPI.AuthServers) > 0 {
-		// Use defaults when no scopes are configured, then validate to ensure
-		// the enforced scopes are always present and warn about unknown ones.
+		// Use defaults when no scopes are configured, then warn about entries the
+		// server does not recognise. The list is returned unchanged.
 		scopesSupported = cfg.MCPAPI.Scopes
 		if len(scopesSupported) == 0 {
 			scopesSupported = tools.DefaultScopes()
@@ -997,6 +1029,11 @@ func runHTTPServer(cfg Config, otelCfg localOtel.Config, otelShutdown func(conte
 			// Extract lf_staff custom claim for service tool authorization (LFX Lens).
 			if staffClaim, ok := token.Get(tools.ClaimLFStaff); ok {
 				extra[tools.ClaimLFStaff] = staffClaim
+			}
+
+			// Extract client_id to identify clients that ignore advertised scopes.
+			if clientIDClaim, ok := token.Get(tools.ClaimClientID); ok {
+				extra[tools.ClaimClientID] = clientIDClaim
 			}
 
 			return &auth.TokenInfo{
@@ -1166,6 +1203,32 @@ type challengeScopeWriter struct {
 	scopeParam string
 }
 
+// scopeParamPattern matches a scope parameter at the start of an auth challenge
+// or after a parameter separator. Auth parameter names are case-insensitive.
+var scopeParamPattern = regexp.MustCompile(`(?i)(?:^|[\s,])scope\s*=`)
+
+// hasScopeParam reports whether an auth challenge already carries a scope
+// parameter. The name must start a parameter rather than appear anywhere in the
+// string, so that a quoted value such as error_description="... scope=..." does
+// not suppress the parameter we intend to add.
+func hasScopeParam(challenge string) bool {
+	// Ignore anything inside quoted parameter values.
+	var unquoted strings.Builder
+	inQuotes := false
+	for i := 0; i < len(challenge); i++ {
+		c := challenge[i]
+		switch {
+		case c == '\\' && inQuotes && i+1 < len(challenge):
+			i++ // Skip the escaped character.
+		case c == '"':
+			inQuotes = !inQuotes
+		case !inQuotes:
+			unquoted.WriteByte(c)
+		}
+	}
+	return scopeParamPattern.MatchString(unquoted.String())
+}
+
 func (w *challengeScopeWriter) WriteHeader(code int) {
 	if code == http.StatusUnauthorized || code == http.StatusForbidden {
 		header := w.Header()
@@ -1175,7 +1238,7 @@ func (w *challengeScopeWriter) WriteHeader(code int) {
 			for i, challenge := range challenges {
 				// Only Bearer challenges take a scope parameter, and it must not
 				// be added twice if an inner handler already set one.
-				if strings.HasPrefix(challenge, "Bearer") && !strings.Contains(challenge, "scope=") {
+				if strings.HasPrefix(challenge, "Bearer") && !hasScopeParam(challenge) {
 					challenge += ", " + w.scopeParam
 				}
 				updated[i] = challenge
@@ -1192,4 +1255,10 @@ func (w *challengeScopeWriter) Flush() {
 	if f, ok := w.ResponseWriter.(http.Flusher); ok {
 		f.Flush()
 	}
+}
+
+// Unwrap returns the wrapped writer so that http.ResponseController can reach
+// the underlying implementation for deadlines and flushing.
+func (w *challengeScopeWriter) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
 }

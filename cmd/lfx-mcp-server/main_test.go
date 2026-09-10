@@ -117,10 +117,15 @@ func listedTools(t *testing.T, token *auth.TokenInfo) map[string]bool {
 // listedToolsFor is listedTools over an explicit enabled-tool list.
 func listedToolsFor(t *testing.T, enabled []string, token *auth.TokenInfo) map[string]bool {
 	t.Helper()
+	return listedToolsForConfig(t, Config{Tools: enabled}, token)
+}
+
+func listedToolsForConfig(t *testing.T, cfg Config, token *auth.TokenInfo) map[string]bool {
+	t.Helper()
 	if logger == nil {
 		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
-	server := newServer(Config{Tools: enabled}, "test", token)
+	server := newServer(cfg, "test", token)
 
 	ctx := context.Background()
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
@@ -407,5 +412,113 @@ func TestNewServer_Tools1AreReadScoped(t *testing.T) {
 		if forNoScope[name] {
 			t.Errorf("%s must not be listed without read scope", name)
 		}
+	}
+}
+
+// TestNewServer_ScopeBlindClientGetsAdvertisedScopes covers clients that ignore
+// the scopes advertised in the PRM and the WWW-Authenticate challenge, and so
+// present a valid token carrying no MCP scope. They are treated as having
+// requested the advertised set, since they offer no way to choose scopes.
+func TestNewServer_ScopeBlindClientGetsAdvertisedScopes(t *testing.T) {
+	const readTool = "count_lfx_resources"
+	const manageTool = "create_committee"
+	enabled := []string{readTool, manageTool}
+
+	codexToken := func() *auth.TokenInfo {
+		return &auth.TokenInfo{
+			Scopes: []string{"offline_access"},
+			Extra: map[string]any{
+				tools.ClaimClientID: "https://chatgpt.com/oauth/codex/IrVFZga_egXz/client.json",
+			},
+		}
+	}
+
+	t.Run("advertising both scopes grants both", func(t *testing.T) {
+		listed := listedToolsFor(t, enabled, codexToken())
+		if !listed[readTool] {
+			t.Errorf("%s must be listed for a scope-blind client", readTool)
+		}
+		if !listed[manageTool] {
+			t.Errorf("%s must be listed for a scope-blind client when manage:all is advertised", manageTool)
+		}
+	})
+
+	t.Run("advertising only read grants only read", func(t *testing.T) {
+		cfg := Config{
+			Tools:  enabled,
+			MCPAPI: MCPAPIConfig{Scopes: []string{"openid", tools.ScopeRead}},
+		}
+		listed := listedToolsForConfig(t, cfg, codexToken())
+		if !listed[readTool] {
+			t.Errorf("%s must be listed when read:all is advertised", readTool)
+		}
+		if listed[manageTool] {
+			t.Errorf("%s must not be listed when manage:all is not advertised", manageTool)
+		}
+	})
+
+	t.Run("unrecognised client gets nothing", func(t *testing.T) {
+		other := &auth.TokenInfo{
+			Scopes: []string{"offline_access"},
+			Extra: map[string]any{
+				tools.ClaimClientID: "https://example.com/oauth/client.json",
+			},
+		}
+		listed := listedToolsFor(t, enabled, other)
+		if listed[readTool] || listed[manageTool] {
+			t.Errorf("no tools may be listed for an unrecognised client with no MCP scopes, got %v", listed)
+		}
+	})
+}
+
+func TestHasScopeParam(t *testing.T) {
+	tests := []struct {
+		name      string
+		challenge string
+		want      bool
+	}{
+		{
+			name:      "no scope parameter",
+			challenge: `Bearer resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource"`,
+			want:      false,
+		},
+		{
+			name:      "scope parameter present",
+			challenge: `Bearer resource_metadata="https://example.com/prm", scope="openid read:all"`,
+			want:      true,
+		},
+		{
+			name:      "scope is the first parameter",
+			challenge: `Bearer scope="openid"`,
+			want:      true,
+		},
+		{
+			// The reason for boundary matching: a quoted value mentioning
+			// scope= must not suppress the parameter we add.
+			name:      "scope mentioned inside a quoted value",
+			challenge: `Bearer error="invalid_token", error_description="try scope=read:all"`,
+			want:      false,
+		},
+		{
+			name:      "different parameter ending in scope",
+			challenge: `Bearer max_scope="read:all"`,
+			want:      false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := hasScopeParam(tc.challenge); got != tc.want {
+				t.Errorf("hasScopeParam(%q) = %v, want %v", tc.challenge, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestHasScopeParam_CaseInsensitive covers auth parameter names being
+// case-insensitive per RFC 9110.
+func TestHasScopeParam_CaseInsensitive(t *testing.T) {
+	if !hasScopeParam(`Bearer realm="x", Scope="openid"`) {
+		t.Error(`hasScopeParam did not match an uppercase Scope parameter`)
 	}
 }
