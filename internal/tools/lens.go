@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/linuxfoundation/lfx-mcp/internal/serviceapi"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -40,14 +41,11 @@ func RegisterQueryLFXLens(server *mcp.Server) {
 		Name: "query_lfx_lens",
 		Description: `Ask natural language questions about a project's data using ad-hoc SQL generation.
 
-Use this tool ONLY for:
-- Membership counts as of a PAST date or at year end by year ("how many members did CNCF have in 2024"): memberships whose install date is on or before the date and whose churn date is after it. The standard metric memberships is a today-only snapshot.
+Use this tool ONLY as a FALLBACK: switch here only when the semantic layer genuinely cannot express the question - after discovery (list_metrics, get_dimensions, get_dimension_values), the read_lfx_semantic_layer_guidance recipes, and two differently-formulated queries have failed - or when a guidance document routes the question here directly (a cross-domain join; an org breakdown on a standard-metric family that rejects org: one query, as the guidance says). Zero rows or an unknown-name error is a discovery failure, not a reason to switch. Membership counts on any date or by year are the memberships standard metric (start_date/end_date/period), not this tool.
 
-FALLBACK (the only other use): switch here only when the semantic layer genuinely cannot express the question - after discovery (list_metrics, get_dimensions, get_dimension_values), the read_lfx_semantic_layer_guidance recipes, and two differently-formulated queries have failed. Zero rows or an unknown-name error is a discovery failure, not a reason to switch.
+Everything else - contributors, activities, memberships, events and sponsorships, registrations, education, maintainer rosters/counts/names, health, social listening (mentions, sentiment, reach), meeting totals (occurrences, scheduled minutes, attendees) - is a standard metric first (query_lfx_standard_metrics; inventory in read_lfx_standard_metrics_guidance), then explore_lfx_semantic_layer + query_lfx_semantic_layer when no family fits. Committee/board rosters: the committee tools.
 
-Everything else - contributors, activities, memberships, events and sponsorships, registrations, education, maintainer rosters/counts/names, health, social listening (mentions, sentiment, reach) - belongs to explore_lfx_semantic_layer + query_lfx_semantic_layer. Committee/board rosters: the committee tools.
-
-project_slug is required default context, NOT a scope boundary. Find it via search_projects. For multiple foundations, pass one slug and name the others in input. LF-wide: use project_slug='tlf'.
+project_slugs is optional. Omit it for LF-wide questions: no project or foundation filter is applied. Pass exact slugs from search_projects to scope to them; several slugs are combined, so a JDF series plus its -fund parent, or a multi-foundation comparison, is one call. Unknown slugs are rejected. Every answer opens with the scope the caller gave.
 
 Runs synchronously; wait 15-30 seconds without retrying. Returns <=200 rows; request explicit pagination ("page 2", or stable ORDER BY with LIMIT/OFFSET). Windows: default trailing 12 months; state concrete yyyy-mm-dd dates or the SQL picks its own.`,
 		Annotations: &mcp.ToolAnnotations{
@@ -58,18 +56,48 @@ Runs synchronously; wait 15-30 seconds without retrying. Returns <=200 rows; req
 }
 
 // QueryLFXLensArgs defines the input for query_lfx_lens.
+//
+// project_slugs is an optional list, not a required default: a required
+// "context" slug documented as "not a scope boundary" was read by the lens
+// agent as its compulsory scope, so LF-wide questions silently became one
+// bucket's figures (the 'tlf' catch-all is about a quarter of memberships, not
+// the LF root). With no slugs the lens applies no project or foundation filter
+// at all; with slugs it scopes to exactly those, OR'd; unknown slugs are
+// rejected by name resolution before any query runs. The old project_slug
+// field is gone rather than mapped: a stale client sending it gets a visible
+// schema error instead of a silently rescoped answer.
 type QueryLFXLensArgs struct {
-	ProjectSlug string `json:"project_slug" jsonschema:"Required default context slug from search_projects, not a scope boundary. For multiple foundations, pass one here and name the others in input; use 'tlf' for LF-wide questions."`
-	Input       string `json:"input" jsonschema:"Natural language question. Use for past-date or by-year membership counts, cross-domain joins and shapes no standard metric expresses; the standard metrics already rank people (top contributors, top maintainers). Contributor, activity, membership, event, education, health and social listening questions belong to the semantic layer and its standard metrics - read read_lfx_semantic_layer_guidance before falling back here. Takes 15-30s. (required)"`
+	ProjectSlugs []string `json:"project_slugs,omitempty" jsonschema:"Optional. Exact project slugs from search_projects. Omit for LF-wide questions: no project or foundation filter is applied. Several slugs are combined (OR): a JDF series plus its -fund parent, or several foundations to compare, is one call. Unknown slugs are rejected before any query runs."`
+	Input        string   `json:"input" jsonschema:"Natural language question. Use for cross-domain joins and shapes no standard metric expresses; membership counts on any date or by year are the memberships standard metric, and the standard metrics already rank people (top contributors, top maintainers). Contributor, activity, membership, event, education, health and social listening questions belong to the semantic layer and its standard metrics - read read_lfx_semantic_layer_guidance before falling back here. Takes 15-30s. (required)"`
 }
 
+// lensWorkflowAdditional is the additional_data the lens MCP workflow reads.
+// project_slugs is always present — [] for LF-wide — so the lens never has to
+// guess whether an absent key means "no scope" or "old client".
 type lensWorkflowAdditional struct {
-	Foundation lensFoundation `json:"foundation"`
+	ProjectSlugs []string `json:"project_slugs"`
 }
 
-type lensFoundation struct {
-	Slug string `json:"slug"`
+// lensRejectionPrefixes open the lens's scope rejections: a slug with no
+// PROJECT_SPINE row, a malformed list, or a failed warehouse lookup. The lens
+// completes such a run (status COMPLETED) with the rejection as its whole
+// content — no agent ran, no query executed — so the prefix is how this side
+// tells a rejection from an answer. Kept as three so a caller can tell "your
+// slug is wrong" from "the warehouse was down; retry". Pinned by tests on both
+// sides (lfx-lens resolve_lfx_lens_mcp_scope.REJECTION_PREFIXES).
+var lensRejectionPrefixes = []string{
+	"Unknown project slug",
+	"Invalid project_slugs",
+	"Project scope could not be resolved",
 }
+
+// Bounds on project_slugs, applied here so an oversized list never reaches
+// the lens: every slug costs it warehouse work. The largest legitimate scope
+// is a handful of foundations to compare. The lens enforces the same limits.
+const (
+	maxLensProjectSlugs = 25
+	maxLensSlugLength   = 128
+)
 
 type lensQueryResponse struct {
 	Content    string `json:"content,omitempty"`
@@ -86,8 +114,13 @@ func handleQueryLFXLens(ctx context.Context, req *mcp.CallToolRequest, args Quer
 		return nil, nil, fmt.Errorf("LFX Lens tools not configured")
 	}
 
-	if args.ProjectSlug == "" || args.Input == "" {
-		return nil, nil, fmt.Errorf("project_slug and input are required")
+	if strings.TrimSpace(args.Input) == "" {
+		return nil, nil, fmt.Errorf("input is required")
+	}
+
+	slugs, err := normalizeSlugs(args.ProjectSlugs)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	userID := AnonymousUserID
@@ -98,7 +131,7 @@ func handleQueryLFXLens(ctx context.Context, req *mcp.CallToolRequest, args Quer
 	sessionID := userID + "-" + time.Now().UTC().Format("2006-01-02T15:04:05Z")
 
 	additionalData, err := json.Marshal(lensWorkflowAdditional{
-		Foundation: lensFoundation{Slug: args.ProjectSlug},
+		ProjectSlugs: slugs,
 	})
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to marshal additional_data: %w", err)
@@ -132,9 +165,70 @@ func handleQueryLFXLens(ctx context.Context, req *mcp.CallToolRequest, args Quer
 		}, nil, nil
 	}
 
+	// A scope rejection is not an answer: the lens stopped before the agent
+	// ran and no query executed. Surface it as an error, text unchanged, so
+	// the caller re-resolves the slug (or retries) instead of reading the
+	// message as data.
+	if isLensRejection(resp.Content) {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: resp.Content}},
+			IsError: true,
+		}, nil, nil
+	}
+
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{&mcp.TextContent{Text: resp.Content}},
 	}, nil, nil
+}
+
+// isLensRejection reports whether lens content is a scope rejection rather
+// than an answer. Real answers open with "**scope**:", so a prefix match on
+// the rejection openers cannot mistake one for the other.
+func isLensRejection(content string) bool {
+	trimmed := strings.TrimSpace(content)
+	for _, prefix := range lensRejectionPrefixes {
+		if strings.HasPrefix(trimmed, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// normalizeSlugs trims, drops empties and de-duplicates preserving order. No
+// case folding and no fuzzy matching: stored slugs are exact and
+// search_projects is the resolver. Always returns a non-nil slice so the JSON
+// carries [] rather than null. An over-long list, an over-long slug or a slug
+// with control characters is an argument error; the offending value is not
+// echoed.
+func normalizeSlugs(slugs []string) ([]string, error) {
+	// Bound the raw caller list before iteration or de-duplication: a huge
+	// list of one repeated slug is still huge input and must not bypass the cap.
+	if len(slugs) > maxLensProjectSlugs {
+		return nil, fmt.Errorf("project_slugs: more than %d entries (%d given)", maxLensProjectSlugs, len(slugs))
+	}
+
+	out := make([]string, 0, len(slugs))
+	seen := make(map[string]struct{}, len(slugs))
+	for _, s := range slugs {
+		// Check before TrimSpace: a trailing newline is a control character,
+		// not harmless whitespace that should become a valid stored slug.
+		if strings.ContainsFunc(s, unicode.IsControl) {
+			return nil, fmt.Errorf("project_slugs: a slug contains control characters")
+		}
+		s = strings.TrimSpace(s)
+		if s == "" {
+			continue
+		}
+		if len(s) > maxLensSlugLength {
+			return nil, fmt.Errorf("project_slugs: a slug exceeds %d bytes", maxLensSlugLength)
+		}
+		if _, dup := seen[s]; dup {
+			continue
+		}
+		seen[s] = struct{}{}
+		out = append(out, s)
+	}
+	return out, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -154,24 +248,28 @@ func handleQueryLFXLens(ctx context.Context, req *mcp.CallToolRequest, args Quer
 // not fit belongs in the read_lfx_semantic_layer_guidance tool, whose output
 // is a tool result and carries no limit; both descriptions route the model
 // there before its first query.
-const exploreSemanticLayerDescription = `The LFX Semantic Layer is the query tool for LF data: contributor, contribution, membership, revenue, event, registration, speaker, sponsorship, enrollment, certification, maintainer, health, project and social listening (mentions, sentiment, reach) metrics, sliceable by country or region. This discovers what can be measured; query_lfx_semantic_layer runs it. Start here unless exact names are known.
+const exploreSemanticLayerDescription = `If a standard metric answers the question (inventory: read_lfx_standard_metrics_guidance), call query_lfx_standard_metrics and do not explore first.
 
-If you have not read read_lfx_semantic_layer_guidance yet this session, read it BEFORE using this tool; one read also covers query_lfx_semantic_layer. Common questions: prefer query_lfx_standard_metrics when a standard metric matches.
+The LFX Semantic Layer is the query tool for LF data: contributor, contribution, membership, revenue, event, registration, speaker, sponsorship, enrollment, certification, maintainer, health, project, meeting (occurrences, scheduled minutes, attendees) and social listening (mentions, sentiment, reach) metrics, sliceable by country, region, parent organization or project tree. This discovers what can be measured; query_lfx_semantic_layer runs it. Start here unless exact names are known.
+
+If you have not read read_lfx_semantic_layer_guidance yet this session, read it BEFORE using this tool; one read also covers query_lfx_semantic_layer.
 
 ACTIONS
 - list_metrics(search): search by one topic word from the list above
 - get_dimensions(metrics, search): a metric's group_by/filter surface; several metrics return only their shared dimensions
 - get_dimension_values(dimension, metrics, search): stored literals - call before filtering on any unseen value; unknowns return zero rows, not an error ('Asia Pacific' not 'APAC')
 
-Names are entity__field with per-metric prefixes - copy qualified_names, never assemble. Resolve project slugs via search_projects, org legal names via search_b2b_orgs. query_lfx_lens is ONLY for past-date membership counts, cross-domain joins, or guidance-sanctioned fallback. Board/committee/ambassador rosters: committee tools.`
+Names are entity__field with per-metric prefixes - copy qualified_names, never assemble. Resolve project slugs via search_projects, org legal names via search_b2b_orgs. query_lfx_lens is ONLY for cross-domain joins or guidance-sanctioned fallback. Board/committee/ambassador rosters: committee tools.`
 
-const querySemanticLayerDescription = `Run governed LFX Semantic Layer metric queries: contributions, memberships, events, sponsorships, education, maintainers, health, social listening, country/region. ALWAYS explore_lfx_semantic_layer first unless exact names are known; never guess.
+const querySemanticLayerDescription = `If a standard metric answers the question (inventory: read_lfx_standard_metrics_guidance), call query_lfx_standard_metrics and do not explore first.
 
-If you have not read read_lfx_semantic_layer_guidance yet this session, read it BEFORE querying; one read also covers explore. If a query_lfx_standard_metrics recipe matches the question, prefer it.
+Run governed LFX Semantic Layer metric queries: contributions, memberships, events, sponsorships, education, maintainers, health, social listening, country/region. ALWAYS explore_lfx_semantic_layer first unless exact names are known; never guess.
+
+If you have not read read_lfx_semantic_layer_guidance yet this session, read it BEFORE querying; one read also covers explore.
 
 SYNTAX: metrics (required), CSV. group_by: dimension qualified_names copied from explore; add metric_time__year (or __quarter, __month) for trends. where is MetricFlow: {{ Dimension('country__lf_region') }} = 'Europe'; {{ TimeDimension('metric_time','DAY') }} >= '2024-01-01'; dates yyyy-mm-dd. limit optional.
 
-SCOPE lives in where (no project parameter). Foundation: {{ Dimension('project__foundation_slug') }} = '<slug>' (resolve via search_projects); NEVER scope a foundation with project_slug - its catch-all bucket, a silent undercount. Org/account filters take FULL LEGAL names - search_b2b_orgs first.
+SCOPE lives in where (no project parameter). Foundation: {{ Dimension('project__foundation_slug') }} = '<slug>' (resolve via search_projects); NEVER scope a foundation with project_slug - its catch-all bucket, a silent undercount. LF-wide ('the Linux Foundation' as a whole) = no project filter at all; 'tlf' is the LF's own membership programme and a tree root, not the LF-wide scope. Org/account filters take FULL LEGAL names - search_b2b_orgs first.
 
 0 rows = misspelled literal or wrong scope: get_dimension_values, then the guidance recipes, BEFORE any query_lfx_lens fallback. State definition and window with every answer.`
 

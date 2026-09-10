@@ -114,3 +114,13 @@ func IsLFStaff(tokenInfo *auth.TokenInfo) bool {
 	staff, ok := tokenInfo.Extra[ClaimLFStaff].(bool)
 	return ok && staff
 }
+
+// ClientID returns the OAuth client identifier from the caller's token, or an
+// empty string when unavailable (for example in stdio mode).
+func ClientID(tokenInfo *auth.TokenInfo) string {
+	if tokenInfo == nil || tokenInfo.Extra == nil {
+		return ""
+	}
+	clientID, _ := tokenInfo.Extra[ClaimClientID].(string)
+	return clientID
+}
