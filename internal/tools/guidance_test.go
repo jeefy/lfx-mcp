@@ -348,18 +348,18 @@ func TestStandardMetricsGuidanceContent(t *testing.T) {
 		"contributors = code, participants = anyone who did anything",
 		// SM-3: the organization grain, firstness and the consortium
 		"is member_organizations (paying-only: paying_member_organizations), never derived from these rows",
-		"\"new logos\" (organizations new to the LF altogether) is new_member_organizations",
+		"\"new logos\" (organizations new to the LF or returning after a lapse) is new_member_organizations",
 		"lost organizations are lost_member_organizations",
 		"Distinct organizations holding at least one active membership on end_date, status-based",
-		"applied.firstness says first ever, first in the foundation or first in the project, following the project switch",
-		"first in the foundation (or\nits consortium) for a root, first in the project with excluded",
+		"applied.firstness says arrival (no project), first in the foundation or first in the project, following the project switch",
+		"an arrival with no project (first LF membership ever or a return after\na lapse), first in the foundation (or its consortium) for a root, first in\nthe project with excluded",
 		"- new_member_organizations with a project below foundation level and\n  combined:",
-		"Distinct organizations whose LAST membership lapsed in the window, counted at that term's churn date (the day after it ended), and that hold no active membership as of the build",
+		"Distinct organizations that departed in the window: a paid membership ended with nothing of any tier or price in force the day after, counted at that churn date and judged on that day, so a later return does not remove it",
 		"The paying subset of member_organizations",
 		"contributors = code, participants = anyone who did anything",
 		"CONSORTIA. A JDF series and its '-fund' project",
 		// V23: the four organization-grain definition sentences, verbatim from applied.definition
-		"Distinct organizations whose first membership was installed in the window",
+		"Distinct organizations that became members in the window, for the first time or returning after a lapse",
 		"Distinct organizations holding at least one active membership with a list price above zero on end_date, status-based; list price, not dues billed",
 		// V24: the ad hoc trap
 		"the layer's first-membership flag counts membership rows, not organizations, and is_first_membership is the Salesforce 'New Business' opportunity type",
