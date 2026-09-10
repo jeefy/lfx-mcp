@@ -22,7 +22,7 @@ https://mcp.lfx.dev/mcp
 
 You will be prompted to log in with your Linux Foundation account (LFID) the first time you connect. *All MCP permissions correspond to LFX platform permissions granted to your LFID.*
 
-**The following clients are set up to work with the LFX MCP Server.** Please file an issue to request additional client support. Running the LFX MCP Server as a local (stdio) MCP server is not supported at this time.
+**The following clients are set up to work with the LFX MCP Server.** Client-specific instructions (menu paths, settings names, etc.) are subject to change as vendors update their products; consult the client's own documentation if the steps below no longer match what you see. Please file an issue to request additional client support. Running the LFX MCP Server as a local (stdio) MCP server is not supported at this time.
 
 ### Goose
 
@@ -153,12 +153,13 @@ Add the following to your `~/.cursor/mcp.json`:
 
 ### ChatGPT
 
-> **Status: pending.** Setup steps below are a placeholder until ChatGPT/Codex connector support is validated end-to-end (tracking: [linuxfoundation/lfx-mcp#126](https://github.com/linuxfoundation/lfx-mcp/issues/126)).
+*Must have a plan that supports Developer mode and MCP access.*
 
-ChatGPT (Developer Mode / custom connectors, Business/Enterprise plans) and Codex CLI/IDE support CIMD, so no `client_id` is needed.
-
-1. In ChatGPT, enable **Developer Mode** (Settings → Connectors → Advanced), then add a custom connector with the URL `https://mcp.lfx.dev/mcp`.
-2. Authenticate with your LFID when prompted.
+1. In ChatGPT, navigate to **Plugins → MCP → Add server**.
+2. Enter **LFX** as the name.
+3. Select **Streamable HTTP** as the type.
+4. Enter `https://mcp.lfx.dev/mcp` as the URL.
+5. Hit **Save**, then click the **Authenticate** button from the Servers list to open a browser window for LFID login.
 
 ### Additional clients (via mcp-remote)
 
