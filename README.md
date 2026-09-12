@@ -23,7 +23,7 @@ https://mcp.lfx.dev/mcp
 
 You will be prompted to log in with your Linux Foundation account (LFID) the first time you connect. *All MCP permissions correspond to LFX platform permissions granted to your LFID.*
 
-**The following clients are set up to work with the LFX MCP Server.** Please file an issue to request additional client support. Running the LFX MCP Server as a local (stdio) MCP server is not supported at this time.
+**The following clients are set up to work with the LFX MCP Server.** Client-specific instructions (menu paths, settings names, etc.) are subject to change as vendors update their products; consult the client's own documentation if the steps below no longer match what you see. Please file an issue to request additional client support. Running the LFX MCP Server as a local (stdio) MCP server is not supported at this time.
 
 ### Goose
 
@@ -152,6 +152,16 @@ Add the following to your `~/.cursor/mcp.json`:
 }
 ```
 
+### ChatGPT
+
+*Must have a plan that supports Developer mode and MCP access.*
+
+1. In ChatGPT, navigate to **Plugins → MCP → Add server**.
+2. Enter **LFX** as the name.
+3. Select **Streamable HTTP** as the type.
+4. Enter `https://mcp.lfx.dev/mcp` as the URL.
+5. Hit **Save**, then click the **Authenticate** button from the Servers list to open a browser window for LFID login.
+
 ### Additional clients (via mcp-remote)
 
 If your MCP client is not listed here, you may try using [mcp-remote](https://github.com/geelen/mcp-remote) as a local proxy.
@@ -215,8 +225,14 @@ npx @modelcontextprotocol/inspector
 
 | Tool              | Description                                                   |
 |-------------------|---------------------------------------------------------------|
-| `search_projects` | Search for LFX projects by name with typeahead and pagination |
+| `search_projects` | Search LFX projects by name (typeahead), exact slug or exact name, optionally scoped to a parent or legal parent; include_total returns the count of indexed, caller-visible projects |
 | `get_project`     | Get a project's base info and settings by UID                 |
+
+### Resource Counts
+
+| Tool                  | Description |
+|-----------------------|-------------|
+| `count_lfx_resources` | Count indexed LFX v2 records (meetings, participants, committees, members, projects) visible to the caller; complete=false means a lower bound |
 
 ### Committees
 
@@ -233,6 +249,7 @@ npx @modelcontextprotocol/inspector
 | `create_committee_member`   | Add a new member to a committee                                                           |
 | `update_committee_member`   | Update an existing committee member's information                                         |
 | `delete_committee_member`   | Remove a member from a committee                                                          |
+| `get_org_committee_seats`   | Summarise an organisation's committee seats across a foundation and its direct child projects; filter by category, optionally list the seats |
 
 ### Mailing Lists
 
@@ -271,7 +288,7 @@ npx @modelcontextprotocol/inspector
 |------------------------------------|-------------------------------------------------------------------------|
 | `search_past_meetings`             | Search past meetings; filter by project, committee, date range          |
 | `get_past_meeting`                 | Get a past meeting by UID                                               |
-| `search_past_meeting_participants` | Search past meeting participants; filter by meeting, committee, project |
+| `search_past_meeting_participants` | Search past meeting participants; filter by meeting, committee, project, date range, attended_only or organisation name; count_only returns record counts; people are de-duplicated by identity like LFX Self Serve (dedupe=false returns raw records) |
 | `get_past_meeting_participant`     | Get a past meeting participant by UID                                   |
 | `search_past_meeting_summaries`    | Search past meeting summaries; filter by meeting, committee, project    |
 | `get_past_meeting_summary`         | Get a past meeting summary by UID                                       |
