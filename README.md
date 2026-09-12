@@ -8,7 +8,7 @@ A [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server that c
 - **Manage committees** — Search, create, update, and delete project committees and their members
 - **Work with mailing lists** — Search project mailing lists and their subscribers
 - **Track project meetings** — Find upcoming meetings, registrants, past participants, and AI-generated summaries
-- **Discover community meetups** — Find upcoming Open Community Group meetups and chapters by community, location, and date
+- **Discover community meetups** — Find upcoming Open Community Group meetup events by community, location, and date
 - **Query membership** — Search project memberships by tier, status, organization, and more; get and manage key contacts
 - **Analyze data with LFX Lens** — Compare and report on project activities and contributions over time
 - ... and more!
