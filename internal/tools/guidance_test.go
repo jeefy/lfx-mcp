@@ -287,6 +287,28 @@ func TestSemanticLayerGuidanceContent(t *testing.T) {
 func TestStandardMetricsGuidanceContent(t *testing.T) {
 	text := standardMetricsGuidance
 	for _, want := range []string{
+		// meetups: the two families, the community-is-a-foundation scope
+		// rule, the switch exceptions, the caveats, and the four shapes
+		"| meetups | window | total, community, region, group, city |",
+		"| meetup_attendees | window | total, community, region, group, city |",
+		"ALL history when start_date is omitted, unlike the activity families",
+		"NULL region or city rows are chapters with none set",
+		"absent rather than a zero row",
+		"## Meetups (Open Community Groups)",
+		"a community is a foundation",
+		"org and\nsubsidiaries do not apply and are rejected",
+		"subprojects is accepted but a\nNO-OP",
+		"two years' rows do not sum\nto a two-year figure",
+		"read ALL HISTORY when start_date is omitted",
+		"attended CNCF meetups in 2024 vs 2025",
+		"period=year, start_date=2024-01-01, end_date=2025-12-31",
+		"Top 5 regions by meetup activity",
+		"order_by=-meetups, limit=5",
+		"The 3 least active groups",
+		"order_by=meetups,\n  limit=3",
+		"absent rather than zero",
+		"Is the Austin meetup scene growing",
+		"Meetups by city over time",
 		// resolve names first, always
 		"## Resolve names first — ALWAYS",
 		"search_projects",
