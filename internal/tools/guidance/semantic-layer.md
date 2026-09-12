@@ -313,7 +313,10 @@ maintainer_contributions, project_health,
 software_value, event_registrations, event_sponsorships, speakers,
 training_enrollments, certifications, social_mentions, social_reach,
 meetups, meetup_attendees; their groupings (by) are in
-read_lfx_standard_metrics_guidance. by left out is the
+read_lfx_standard_metrics_guidance. The two meetup families are the
+exception to the uniform switches: they take project only — org and
+subsidiaries are rejected, and subprojects is accepted but a no-op, since
+chapters attach at the foundation (recipe 16). by left out is the
 first listed, and the scope supplies the other axis (by=project with org =
 that company's projects; by=org with project = that project's companies).
 period adds a time dimension to by: by=org with period=month is one row per
@@ -340,7 +343,8 @@ saying which scope, dates and definition ran. A briefing usually wants the
 headline and the breakdown — two calls. DEPTH: on every standard metric,
 separate and combined cover a named node's tree and a company's subsidiaries
 at ANY depth. Results come back in the same words (account, parent_org, project,
-foundation, period), and order_by takes them.
+foundation, period), and order_by takes them (the meetup families
+excepted from DEPTH: no tree, subprojects a no-op).
 There is no free filter on a standard metric: a slice the switches, the dates and
 the period cannot express is an explore + query question, and its answer is
 labelled ad hoc.

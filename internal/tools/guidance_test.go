@@ -228,6 +228,8 @@ func TestSemanticLayerGuidanceContent(t *testing.T) {
 		// standard metric calls
 		"STANDARD METRIC CALLS take uniform parameters",
 		"this means INDIVIDUALS by contribution volume — run it, do not ask",
+		"The two meetup families are the\nexception to the uniform switches",
+		"(the meetup families\nexcepted from DEPTH: no tree, subprojects a no-op)",
 		"16. MEETUPS (Open Community Groups)",
 		"a community IS a foundation:\nproject=cncf",
 		"AVAILABILITY FIRST",
