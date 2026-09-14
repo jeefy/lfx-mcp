@@ -243,7 +243,7 @@ npx @modelcontextprotocol/inspector
 | `update_committee`          | Update a committee's base information                                                     |
 | `update_committee_settings` | Update a committee's settings (visibility, email requirements, meeting attendee defaults) |
 | `delete_committee`          | Delete a committee by UID                                                                 |
-| `search_committee_members`  | Search committee members; filter by committee, project, or name                           |
+| `search_committee_members`  | Search committee members; filter by committee, project, organization name, or name        |
 | `get_committee_member`      | Get a specific committee member by committee and member UID                               |
 | `create_committee_member`   | Add a new member to a committee                                                           |
 | `update_committee_member`   | Update an existing committee member's information                                         |
