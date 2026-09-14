@@ -135,7 +135,7 @@ func RegisterSearchCommitteeMembers(server *mcp.Server, asGroups bool) {
 	if asGroups {
 		mcp.AddTool(server, &mcp.Tool{
 			Name:        "search_group_members",
-			Description: "Search for LFX group (also called committee) members. Optionally filter by group UID, project UID, and/or name. At least one filter is recommended but not required. The authoritative roster source - prefer over the semantic layer or query_lfx_lens for board/TOC/ambassador membership. For counts, paginate until page_token is absent; records carry organization, role and voting status but no country.",
+			Description: "Search for LFX group (also called committee) members. Optionally filter by group UID, project UID, and/or name. At least one filter is recommended but not required. The authoritative roster source - prefer over the semantic layer or query_lfx_lens for board/TOC/ambassador membership. For counts, paginate until page_token is absent; records carry organization, role and voting status but no country. Filters combine with AND: a record must match every filter given.",
 			Annotations: &mcp.ToolAnnotations{
 				Title:        "Search Group Members",
 				ReadOnlyHint: true,
@@ -145,7 +145,7 @@ func RegisterSearchCommitteeMembers(server *mcp.Server, asGroups bool) {
 	}
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "search_committee_members",
-		Description: "Search for LFX committee members. Optionally filter by committee UID, project UID, and/or name. At least one filter is recommended but not required. The authoritative roster source - prefer over the semantic layer or query_lfx_lens for board/TOC/ambassador membership. For counts, paginate until page_token is absent; records carry organization, role and voting status but no country.",
+		Description: "Search for LFX committee members. Optionally filter by committee UID, project UID, and/or name. At least one filter is recommended but not required. The authoritative roster source - prefer over the semantic layer or query_lfx_lens for board/TOC/ambassador membership. For counts, paginate until page_token is absent; records carry organization, role and voting status but no country. Filters combine with AND: a record must match every filter given.",
 		Annotations: &mcp.ToolAnnotations{
 			Title:        "Search Committee Members",
 			ReadOnlyHint: true,
@@ -579,6 +579,7 @@ func handleSearchCommitteeMembers(ctx context.Context, req *mcp.CallToolRequest,
 	}
 
 	// Build tag filters: committee members are tagged by the committee service indexer.
+	// Filters go through tags_all so that every given filter must match.
 	var tags []string
 	if args.CommitteeUID != "" {
 		tags = append(tags, fmt.Sprintf("committee_uid:%s", args.CommitteeUID))
@@ -587,7 +588,7 @@ func handleSearchCommitteeMembers(ctx context.Context, req *mcp.CallToolRequest,
 		tags = append(tags, fmt.Sprintf("project_uid:%s", args.ProjectUID))
 	}
 	if len(tags) > 0 {
-		payload.Tags = tags
+		payload.TagsAll = tags
 	}
 
 	if args.Name != "" {
