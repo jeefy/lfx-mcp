@@ -196,7 +196,7 @@ func RegisterSearchPastMeetings(server *mcp.Server, asGroups bool) {
 	if asGroups {
 		mcp.AddTool(server, &mcp.Tool{
 			Name:        "search_past_meetings",
-			Description: "Search for LFX past meetings (v1_past_meeting) using the query service. Supports filtering by project, group (also known as committee), meeting ID, date range, and name. Past attendance and summaries live here, not in the semantic layer or query_lfx_lens.",
+			Description: "Search for LFX past meetings (v1_past_meeting) using the query service. Supports filtering by project, group (also known as committee), meeting ID, date range, and name. Past attendance and summaries live here, not in the semantic layer or query_lfx_lens. Filters combine with AND: a record must match every filter given.",
 			Annotations: &mcp.ToolAnnotations{
 				Title:        "Search Past Meetings",
 				ReadOnlyHint: true,
@@ -206,7 +206,7 @@ func RegisterSearchPastMeetings(server *mcp.Server, asGroups bool) {
 	}
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "search_past_meetings",
-		Description: "Search for LFX past meetings using the query service. Supports filtering by project, committee, meeting ID, date range, and name. Past attendance and summaries live here, not in the semantic layer or query_lfx_lens.",
+		Description: "Search for LFX past meetings using the query service. Supports filtering by project, committee, meeting ID, date range, and name. Past attendance and summaries live here, not in the semantic layer or query_lfx_lens. Filters combine with AND: a record must match every filter given.",
 		Annotations: &mcp.ToolAnnotations{
 			Title:        "Search Past Meetings",
 			ReadOnlyHint: true,
@@ -1115,7 +1115,7 @@ func handleSearchPastMeetings(ctx context.Context, req *mcp.CallToolRequest, arg
 		payload.Name = &args.Name
 	}
 
-	// project_uid uses parent_ref; committee_uid and meeting_id use tags and can coexist.
+	// project_uid uses parent_ref; committee_uid and meeting_id use tags_all: both must match.
 	if args.ProjectUID != "" {
 		parentRef := "project:" + args.ProjectUID
 		payload.Parent = &parentRef
@@ -1129,7 +1129,7 @@ func handleSearchPastMeetings(ctx context.Context, req *mcp.CallToolRequest, arg
 		tags = append(tags, fmt.Sprintf("meeting_id:%s", args.MeetingID))
 	}
 	if len(tags) > 0 {
-		payload.Tags = tags
+		payload.TagsAll = tags
 	}
 
 	if args.DateFrom != "" || args.DateTo != "" {
