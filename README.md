@@ -248,7 +248,7 @@ npx @modelcontextprotocol/inspector
 | `create_committee_member`   | Add a new member to a committee                                                           |
 | `update_committee_member`   | Update an existing committee member's information                                         |
 | `delete_committee_member`   | Remove a member from a committee                                                          |
-| `get_org_committee_seats`   | Summarise an organisation's committee seats across a foundation and its direct child projects; filter by category, optionally list the seats |
+| `get_org_committee_seats`   | Summarise an organisation's committee seats across a foundation and its direct child projects; filter by category, optionally list the seats (seats, not the membership's contact of record) |
 
 ### Mailing Lists
 
@@ -266,7 +266,7 @@ npx @modelcontextprotocol/inspector
 |---------------------------------|---------------------------------------------------------------------------------------|
 | `search_members`                | Search and filter members (memberships) by project, tier, status, or B2B organization |
 | `get_member_membership`         | Get a single membership by membership UID                                             |
-| `get_membership_key_contacts`   | Get key contacts (primary contacts, board members) for a membership                   |
+| `get_membership_key_contacts`   | Get a membership's key contacts (contacts of record, not committee seats)             |
 | `get_membership_key_contact`    | Get a single key contact by membership UID and contact UID                            |
 | `create_membership_key_contact` | Add a key contact to a membership                                                     |
 | `update_membership_key_contact` | Update an existing key contact on a membership                                        |
