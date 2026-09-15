@@ -348,7 +348,7 @@ func TestStandardMetricsGuidanceContent(t *testing.T) {
 		"end_date defaults to today (UTC)",
 		"includes_future_dated",
 		"the trailing 365 days before end_date",
-		"all history on new_members, membership_churn\nand the new_/lost_member_organizations families",
+		"all history on new_members, membership_churn,\nthe new_/lost_member_organizations families and the meetup families\n(meetups, meetup_attendees",
 		"the trailing year on any\nday or week series",
 		"runs from\nthe first row of data",
 		"timezone (always UTC)",

@@ -140,8 +140,10 @@ date).
 end_date defaults to today (UTC); an explicit future end_date is honoured
 and flagged includes_future_dated. start_date defaults to the family's
 window: the trailing 365 days before end_date on the activity, event,
-training and social families; all history on new_members, membership_churn
-and the new_/lost_member_organizations families; the trailing year on any
+training and social families; all history on new_members, membership_churn,
+the new_/lost_member_organizations families and the meetup families
+(meetups, meetup_attendees — Open Community Group chapter events, not the
+event families); the trailing year on any
 day or week series. A month,
 quarter or year series on an at-date family with no start_date runs from
 the first row of data. A future end_date does not move the default window

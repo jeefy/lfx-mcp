@@ -273,6 +273,12 @@ func TestStandardMetrics_RequiredParamSurvivesCompaction(t *testing.T) {
 			t.Errorf("metric description does not mention %q — the contract must survive schema compaction", want)
 		}
 	}
+	// The start_date default must agree with the exception the metric
+	// description carries: one all-history list, the meetup families on it.
+	start := schemaPropertyDescription(t, listStandardMetricsTool(t), "start_date")
+	if want := "the meetup families (meetups, meetup_attendees)"; !strings.Contains(start, want) {
+		t.Errorf("start_date description does not list %q among the all-history families", want)
+	}
 }
 
 func TestStandardMetrics_RegistersReadOnly(t *testing.T) {
@@ -296,7 +302,7 @@ func TestStandardMetrics_RegistersReadOnly(t *testing.T) {
 func TestStandardMetrics_ParameterDescriptionsMatchTheGuidance(t *testing.T) {
 	tool := listStandardMetricsTool(t)
 	for property, want := range map[string]string{
-		"start_date": "all history on new_members, membership_churn and the new_/lost_member_organizations families",
+		"start_date": "all history on new_members, membership_churn, the new_/lost_member_organizations families and the meetup families (meetups, meetup_attendees)",
 		"project":    "the LF's own membership programme and a root of the project tree, not the LF-wide scope",
 	} {
 		if got := schemaPropertyDescription(t, tool, property); !strings.Contains(got, want) {
