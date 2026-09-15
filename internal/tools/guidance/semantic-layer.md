@@ -235,7 +235,15 @@ built in. Active = no end date; start_date has a
 2000-01-01 sentinel — never trend on it. As of date D: total_maintainers where
 maintainer_key__start_date <= 'D' AND (end_date IS NULL OR end_date >= 'D');
 since/until on start_date is meaningless, readings before tracking began run
-high, and a trend is one as-of reading per period. Maintainer×contribution
+high, and a trend is one as-of reading per period. Role and source:
+maintainer_key__maintainer_role (maintainer, reviewer) and
+maintainer_key__maintainer_source (project_repo, inherited_kernel_tree,
+roster_repo) group the roster. active_maintainers_excl_reviewers,
+active_reviewers and active_maintainers_excl_inherited are filtered splits of
+active_maintainers: a split queried alone omits every group with nothing in
+it, so read it beside active_maintainers or use the standard metric
+maintainers (by=role, by=source, or the split columns on total, org and
+project). Maintainer×contribution
 figures are not in this layer: contributions made by maintainers per project
 or per organization, and the maintainer share of work, are the standard
 metric maintainer_contributions (by=project or by=org; the share is over

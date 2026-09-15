@@ -28,6 +28,12 @@ const orgSeatsPageSize = 500
 // Hitting it is an error, never a truncated roster.
 const orgSeatsMaxPages = 200
 
+// orgSeatsProjectChunk is the most project uids one seats request carries.
+// The committee-service route takes the scope as one project_uids query
+// parameter per uid; a large foundation's family in a single request
+// overflows the request line, so the family is read in several requests.
+const orgSeatsProjectChunk = 40
+
 // rootProjectSlug is the administrative pseudo-project LFX Self Serve skips
 // when resolving a foundation's family (ROOT_PROJECT_SLUG).
 const rootProjectSlug = "ROOT"
@@ -152,8 +158,9 @@ func RegisterGetOrgCommitteeSeats(server *mcp.Server) {
 // project whose parent is the foundation (direct children only — the project
 // indexer's parent ref carries the immediate parent, and this mirrors LFX
 // Self Serve's getFoundationProjectUids), skipping the ROOT pseudo-project,
-// draining every page. Errors propagate: the caller fails closed rather than
-// silently scoping to the root alone.
+// draining every page. Each uid appears once, so a caller that reads the
+// family in chunks never reads a project twice. Errors propagate: the caller
+// fails closed rather than silently scoping to the root alone.
 func resolveFoundationFamily(ctx context.Context, clients *lfxv2.Clients, foundationUID string) ([]string, error) {
 	family := []string{foundationUID}
 	resourceType := projectResourceType
@@ -189,16 +196,39 @@ func resolveFoundationFamily(ctx context.Context, clients *lfxv2.Clients, founda
 			}
 		}
 		if result.PageToken == nil || *result.PageToken == "" {
-			return family, nil
+			return dedupeStrings(family), nil
 		}
 		pageToken = result.PageToken
 	}
 }
 
-// drainOrgSeats follows page_token until exhausted or the page cap; the cap
-// is an error because LFX Self Serve never shows a partial roster. The shared
-// auth interceptor injects the caller's exchanged token on every request.
+// drainOrgSeats reads the organisation's seats for the scope. Without a
+// family it is one drain with no project_uids; with a family larger than
+// orgSeatsProjectChunk the family is split into chunks and one drain runs
+// per chunk, seats concatenated (each seat belongs to one project, so the
+// chunks are disjoint). An error in any chunk is the call's error.
 func drainOrgSeats(ctx context.Context, clients *lfxv2.Clients, orgUID string, projectUIDs []string) ([]orgCommitteeSeat, error) {
+	// One drain covers the unscoped call (no project_uids at all) and any
+	// family that fits one request.
+	if len(projectUIDs) <= orgSeatsProjectChunk {
+		return drainOrgSeatsScope(ctx, clients, orgUID, projectUIDs)
+	}
+	var seats []orgCommitteeSeat
+	for _, chunk := range chunkStrings(projectUIDs, orgSeatsProjectChunk) {
+		part, err := drainOrgSeatsScope(ctx, clients, orgUID, chunk)
+		if err != nil {
+			return nil, err
+		}
+		seats = append(seats, part...)
+	}
+	return seats, nil
+}
+
+// drainOrgSeatsScope follows page_token until exhausted or the page cap; the
+// cap is an error because LFX Self Serve never shows a partial roster. The
+// shared auth interceptor injects the caller's exchanged token on every
+// request.
+func drainOrgSeatsScope(ctx context.Context, clients *lfxv2.Clients, orgUID string, projectUIDs []string) ([]orgCommitteeSeat, error) {
 	var seats []orgCommitteeSeat
 	var pageToken *string
 	pageSize := orgSeatsPageSize
@@ -223,7 +253,10 @@ func drainOrgSeats(ctx context.Context, clients *lfxv2.Clients, orgUID string, p
 		}
 		pageToken = pg.PageToken
 	}
-	return nil, fmt.Errorf("the organisation's roster exceeds the %d-page cap; scope with foundation_uid", orgSeatsMaxPages)
+	if len(projectUIDs) == 0 {
+		return nil, fmt.Errorf("the organisation's roster exceeds the %d-page cap; scope with foundation_uid", orgSeatsMaxPages)
+	}
+	return nil, fmt.Errorf("the organisation's roster exceeds the %d-page cap for the projects in scope", orgSeatsMaxPages)
 }
 
 // isBoardCategory mirrors LFX Self Serve's isBoardCategory.

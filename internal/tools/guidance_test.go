@@ -514,6 +514,20 @@ func TestStandardMetricsGuidanceContent(t *testing.T) {
 	}
 }
 
+// TestSemanticLayerGuidanceMaintainerSplits pins recipe 11's role and source
+// dimensions and split metrics.
+func TestSemanticLayerGuidanceMaintainerSplits(t *testing.T) {
+	text := strings.Join(strings.Fields(semanticLayerGuidance), " ")
+	for _, want := range []string{
+		"maintainer_key__maintainer_role (maintainer, reviewer) and maintainer_key__maintainer_source (project_repo, inherited_kernel_tree, roster_repo) group the roster",
+		"a split queried alone omits every group with nothing in it, so read it beside active_maintainers or use the standard metric maintainers (by=role, by=source, or the split columns on total, org and project)",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("semantic layer guidance missing %q", want)
+		}
+	}
+}
+
 // TestStandardMetricsGuidanceCarriesNoFigure pins that the guidance quotes
 // no absolute figure: a number in the guidance goes stale the day after it
 // is written and gets quoted as if it were the answer. Dates, parameter
@@ -525,6 +539,22 @@ func TestStandardMetricsGuidanceCarriesNoFigure(t *testing.T) {
 		match = strings.TrimRight(match, ".,")
 		if !allowed.MatchString(match) {
 			t.Errorf("standard metric guidance carries the figure %q; figures go stale and get quoted", match)
+		}
+	}
+}
+
+// TestStandardMetricsGuidanceMaintainerSplits pins the maintainers row's role
+// and source groupings and split columns.
+func TestStandardMetricsGuidanceMaintainerSplits(t *testing.T) {
+	text := strings.Join(strings.Fields(standardMetricsGuidance), " ")
+	for _, want := range []string{
+		"| maintainers | at-date | total, org, project, maintainer, role, source |",
+		"active_maintainers[, active_maintainers_excl_reviewers, active_reviewers, active_maintainers_excl_inherited]",
+		"by=total, org and project carry the three split columns beside active_maintainers (excl_reviewers and reviewers partition it within one project; excl_inherited drops people whose roster came only with a vendored kernel tree or another seeded roster)",
+		"by=role (maintainer, reviewer) and by=source (project_repo, inherited_kernel_tree, roster_repo) give one row per value",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("standard metric guidance missing %q", want)
 		}
 	}
 }

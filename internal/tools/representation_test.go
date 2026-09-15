@@ -59,9 +59,13 @@ func TestGuidanceSeparatesContactOfRecordFromSeatHolder(t *testing.T) {
 // reviewers and per-project counting.
 func TestMaintainersRowCarriesRosterInheritanceCaveat(t *testing.T) {
 	standard := strings.Join(strings.Fields(standardMetricsGuidance), " ")
-	const want = "by=maintainer has no series; per-project counts include people the roster inherits from vendored Linux kernel trees on kernel-fork projects, and MAINTAINERS-file reviewers count as maintainers; a person maintaining two projects counts once in each"
-	if !strings.Contains(standard, want) {
-		t.Error("maintainers row must carry the roster-inheritance caveat")
+	for _, want := range []string{
+		"by=maintainer has no series; per-project counts include people the roster inherits from vendored Linux kernel trees on kernel-fork projects, and MAINTAINERS-file reviewers count as maintainers",
+		"a person maintaining two projects counts once in each and can sit in two role or source rows",
+	} {
+		if !strings.Contains(standard, want) {
+			t.Errorf("maintainers row must carry %q", want)
+		}
 	}
 }
 
