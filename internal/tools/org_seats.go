@@ -140,7 +140,7 @@ func RegisterGetOrgCommitteeSeats(server *mcp.Server) {
 		Description: "Summarise an organization's committee seats as LFX Self Serve's Org Lens Board & Committee tab shows them. " +
 			"b2b_org_uid is the 18-character SFID from search_b2b_orgs. With foundation_uid, scope is its root project plus direct child projects as visible to the caller, the way LFX Self Serve scopes it; an organization grant does not make project discovery exhaustive. Omit foundation_uid for the organization's seats across all projects. " +
 			"Returns seats_total, people (distinct e-mails), board_seats vs committee_seats, by_category, by_project, by_role, editable vs foundation_controlled; include_seats adds the rows (name, e-mail, role, voting status, appointed_by, committee, project). " +
-			"category keeps one committee category, matched case-insensitively. The caller needs the organization grant (auditor or writer) LFX Self Serve requires; the result is complete for the scope, never truncated.",
+			"category keeps one committee category, matched case-insensitively. The caller needs the organization grant (auditor or writer) LFX Self Serve requires; the result is complete for the scope, never truncated. Seats only; the membership's contact of record is get_membership_key_contacts and can be a different person.",
 		Annotations: &mcp.ToolAnnotations{
 			Title:        "Get Organization Committee Seats",
 			ReadOnlyHint: true,
