@@ -680,7 +680,12 @@ func newServer(cfg Config, serviceName string, callerToken *auth.TokenInfo) *mcp
 		}
 	}
 
-	isStaff := callerToken == nil || tools.IsLFStaff(callerToken)
+	// Machine (client-credentials/M2M) callers never carry the lf_staff claim,
+	// since Auth0 does not run post-login Actions for that grant type. Access
+	// to the LFX MCP API is already restricted to a small set of trusted
+	// server-side clients via their client_grant, so treat any M2M caller as
+	// staff-equivalent for tool registration purposes.
+	isStaff := callerToken == nil || tools.IsLFStaff(callerToken) || tools.IsMachineAccount(callerToken)
 
 	// Register tools based on configuration and caller scopes.
 	enabledTools := make(map[string]bool)
@@ -1028,6 +1033,12 @@ func runHTTPServer(cfg Config, otelCfg localOtel.Config, otelShutdown func(conte
 			extra["raw_token"] = tokenString
 			if username := lfxauth.ExtractUsername(token); username != "" {
 				extra["username"] = username
+			}
+
+			// Flag machine (client-credentials/M2M) tokens once here so callers
+			// don't need to re-derive it from the subject claim.
+			if lfxauth.IsMachineToken(token) {
+				extra[lfxauth.MachineAccountExtraKey] = true
 			}
 
 			// Extract lf_staff custom claim for service tool authorization (LFX Lens).

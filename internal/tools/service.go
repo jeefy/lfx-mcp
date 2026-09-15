@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	lfxauth "github.com/linuxfoundation/lfx-mcp/internal/auth"
 	"github.com/linuxfoundation/lfx-mcp/internal/lfxv2"
 	"github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -123,4 +124,17 @@ func ClientID(tokenInfo *auth.TokenInfo) string {
 	}
 	clientID, _ := tokenInfo.Extra[ClaimClientID].(string)
 	return clientID
+}
+
+// IsMachineAccount returns true if the caller's token belongs to a machine
+// (client-credentials/M2M) account rather than a human user, per the
+// auth.MachineAccountExtraKey flag set at verification time. Auth0 never runs
+// post-login Actions for client-credentials grants, so these tokens never
+// carry the lf_staff claim regardless of which client they were issued to.
+func IsMachineAccount(tokenInfo *auth.TokenInfo) bool {
+	if tokenInfo == nil || tokenInfo.Extra == nil {
+		return false
+	}
+	isMachine, _ := tokenInfo.Extra[lfxauth.MachineAccountExtraKey].(bool)
+	return isMachine
 }
