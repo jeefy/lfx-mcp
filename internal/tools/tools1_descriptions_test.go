@@ -23,6 +23,9 @@ func TestTools1Descriptions_FitSchemaBudget(t *testing.T) {
 		{"search_past_meeting_participants", func(s *mcp.Server) { RegisterSearchPastMeetingParticipants(s, true) }},
 		{"get_org_committee_seats", RegisterGetOrgCommitteeSeats},
 		{"search_projects", RegisterSearchProjects},
+		{"get_membership_key_contacts", RegisterGetMembershipKeyContacts},
+		{"search_committee_members", func(s *mcp.Server) { RegisterSearchCommitteeMembers(s, false) }},
+		{"search_group_members", func(s *mcp.Server) { RegisterSearchCommitteeMembers(s, true) }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			tool := listRegisteredTool(t, tc.name, tc.register)
