@@ -344,6 +344,11 @@ func TestStandardMetricsGuidanceContent(t *testing.T) {
 		"the churn date is the day AFTER the term ended",
 		"known for a minority of contributors (applied.coverage)",
 		"one row per GitHub identity (`handle`, a profile URL)",
+		// the maintainer roster's handle column: a profile URL of the shape
+		// the contributions families return under that word
+		"project, project_name, handle, maintainer, account, role, source",
+		"match the two on\n  the login part",
+		"strip the URL prefix before matching",
 		"Organizations from the enrichment vocabulary, not CRM accounts",
 		"contributors = code, participants = anyone who did anything",
 		// SM-3: the organization grain, firstness and the consortium
