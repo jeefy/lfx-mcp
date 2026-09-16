@@ -349,6 +349,7 @@ func TestStandardMetricsGuidanceContent(t *testing.T) {
 		"project, project_name, handle, maintainer, account, role, source",
 		"match the two on\n  the login part",
 		"strip the URL prefix before matching",
+		"report it as unmatched",
 		"Organizations from the enrichment vocabulary, not CRM accounts",
 		"contributors = code, participants = anyone who did anything",
 		// SM-3: the organization grain, firstness and the consortium
@@ -528,6 +529,7 @@ func TestSemanticLayerGuidanceMaintainerSplitsAndRosterSources(t *testing.T) {
 		"maintainer_key__maintainer_role (maintainer, reviewer) and maintainer_key__maintainer_source (project_repo, inherited_kernel_tree, roster_repo) group the roster",
 		// the identity dimension beside the display name
 		"maintainer_key__github_username is the GitHub profile URL",
+		"the NULL rows stay one",
 		"a split queried alone omits every group with nothing in it, so read it beside active_maintainers or use the standard metric maintainers (by=role, by=source, or the split columns on total, org and project)",
 		"never Board alone",
 		"the seats that represent the organization are Board seats and Voting Rep or Alternate Voting Rep seats on any committee",

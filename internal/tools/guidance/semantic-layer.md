@@ -241,7 +241,8 @@ maintainer_key__maintainer_source (project_repo, inherited_kernel_tree,
 roster_repo) group the roster. Identity: maintainer_key__github_username is
 the GitHub profile URL, the same shape as activity_project_id__github_username
 (NULL where the row's identity is not a GitHub login); group by it beside
-maintainer_key__maintainer_name to tell two people of one display name apart.
+maintainer_key__maintainer_name to tell two people of one display name apart
+where the username is present; the NULL rows stay one group per display name.
 active_maintainers_excl_reviewers,
 active_reviewers and active_maintainers_excl_inherited are filtered splits of
 active_maintainers: a split queried alone omits every group with nothing in

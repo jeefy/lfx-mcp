@@ -403,7 +403,8 @@ member organizations across the LF today", and the offer of memberships
   by=maintainer, subprojects=excluded → one row per person, project and
   employer with `handle`, a profile URL; a published maintainers file lists
   bare logins, so strip the URL prefix before matching, case-insensitively;
-  a NULL-handle row matches by display name only — say so in the answer.
+  a NULL-handle row cannot be matched on the login: report it as unmatched
+  under its display name, never as a match.
 - A rejection: memberships, start_date=2020-01-01 → "start_date needs period
   for an at-date metric; the state on a single day is end_date alone" — add
   period=year for the series, or drop start_date for one day.
