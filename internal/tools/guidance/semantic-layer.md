@@ -238,7 +238,11 @@ since/until on start_date is meaningless, readings before tracking began run
 high, and a trend is one as-of reading per period. Role and source:
 maintainer_key__maintainer_role (maintainer, reviewer) and
 maintainer_key__maintainer_source (project_repo, inherited_kernel_tree,
-roster_repo) group the roster. active_maintainers_excl_reviewers,
+roster_repo) group the roster. Identity: maintainer_key__github_username is
+the GitHub profile URL, the same shape as activity_project_id__github_username
+(NULL where the row's identity is not a GitHub login); group by it beside
+maintainer_key__maintainer_name to tell two people of one display name apart.
+active_maintainers_excl_reviewers,
 active_reviewers and active_maintainers_excl_inherited are filtered splits of
 active_maintainers: a split queried alone omits every group with nothing in
 it, so read it beside active_maintainers or use the standard metric

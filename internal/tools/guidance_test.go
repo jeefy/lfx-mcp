@@ -526,6 +526,8 @@ func TestSemanticLayerGuidanceMaintainerSplitsAndRosterSources(t *testing.T) {
 	text := strings.Join(strings.Fields(semanticLayerGuidance), " ")
 	for _, want := range []string{
 		"maintainer_key__maintainer_role (maintainer, reviewer) and maintainer_key__maintainer_source (project_repo, inherited_kernel_tree, roster_repo) group the roster",
+		// the identity dimension beside the display name
+		"maintainer_key__github_username is the GitHub profile URL",
 		"a split queried alone omits every group with nothing in it, so read it beside active_maintainers or use the standard metric maintainers (by=role, by=source, or the split columns on total, org and project)",
 		"never Board alone",
 		"the seats that represent the organization are Board seats and Voting Rep or Alternate Voting Rep seats on any committee",
