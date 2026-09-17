@@ -20,9 +20,6 @@ Open a new issue in this repository with the
 form. It asks whether to grant or remove access, the LFID username, and what you plan to do with the assistant;
 the rest is optional.
 
-> Issues are public, including the LFID username. Do not put e-mail addresses or phone numbers in them.
-> Anything that needs those goes to [support.linuxfoundation.org](https://support.linuxfoundation.org).
-
 ## What happens next
 
 We reply on the issue and close it once the change is done. Then connect your client as below and sign in with
