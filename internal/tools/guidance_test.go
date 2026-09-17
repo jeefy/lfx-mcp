@@ -442,7 +442,7 @@ func TestStandardMetricsGuidanceContent(t *testing.T) {
 		"FLOOR: the account is resolved from the proposal's company field",
 		"There is\n  no event filter: by=event and a window is how one event is isolated",
 		"this counts PEOPLE, not sessions",
-		"| topic | talks only: one term matched against the session's title, track and abstract | none = every talk |",
+		"| topic | talks only: one term matched against the session's title, track, abstract and tags | none = every talk |",
 		"with one\nexception, topic, which only talks accepts",
 		"Counts SESSIONS, not people",
 		"say \"talks mentioning X\", not \"talks about X\"",

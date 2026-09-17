@@ -327,7 +327,7 @@ field; many resolve to none) and as PEOPLE, not talks. TALKS BY TOPIC ("how
 many OpenTelemetry talks at KubeCon") is the talks standard metric:
 by=event, topic=OpenTelemetry, project=cncf, dates bracketing the edition
 — it counts accepted SESSIONS (speakers counts people), and topic is a
-keyword match on title, track and abstract, so say "talks mentioning
+keyword match on title, track, abstract and tags, so say "talks mentioning
 OpenTelemetry". Do not approximate talks from speaker counts or from the
 hosting project (event_id__project_name is the foundation that ran the
 event, not what a talk was about). This layer has no session entity:
@@ -346,7 +346,7 @@ software_value, event_registrations, event_sponsorships, speakers,
 training_enrollments, certifications, social_mentions, social_reach, talks;
 their groupings (by) are in read_lfx_standard_metrics_guidance. talks is
 the one family with a filter of its own, topic (a keyword match on the
-session's title, track and abstract); every other family rejects it. by left out is the
+session's title, track, abstract and tags); every other family rejects it. by left out is the
 first listed, and the scope supplies the other axis (by=project with org =
 that company's projects; by=org with project = that project's companies).
 period adds a time dimension to by: by=org with period=month is one row per

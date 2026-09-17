@@ -57,8 +57,10 @@ func RegisterStandardMetrics(server *mcp.Server) {
 // StandardMetricsArgs defines the input for query_lfx_standard_metrics. Every
 // field travels to the lens standard-metric endpoint unchanged in meaning;
 // standardMetricRequest below is the body it becomes. There is deliberately
-// no free-form filter: the scope switches and the window are the only ways
-// to slice a governed figure, so a result is always the recipe as defined.
+// no general free-form filter: the scope switches and the window are the
+// ways to slice a governed figure, so a result is always the recipe as
+// defined. The one exception is Topic, a keyword filter the talks family
+// alone accepts; the lens rejects it on every other family.
 //
 // Metric is the only required field, so under the schema compaction described
 // on QuerySemanticLayerArgs its description is the one that survives intact
@@ -77,7 +79,7 @@ type StandardMetricsArgs struct {
 	Subprojects  string `json:"subprojects,omitempty" jsonschema:"What the project name covers: combined (default) = the project plus everything under it, any depth, folded together: the project columns leave the result, and the rows are whatever by groups (by=total is one figure, by=org is one row per organization); separate = one row per project, the breakdown; excluded = that project's own bucket only."`
 	Org          string `json:"org,omitempty" jsonschema:"Optional organization scope: ONE stored legal account name from search_b2b_orgs, exact (e.g. Red Hat LLC). A name matching no data-bearing account is rejected with candidates; never guess one. Families whose model carries no account reject org."`
 	Subsidiaries string `json:"subsidiaries,omitempty" jsonschema:"What the org name covers: excluded (default) = that account only; separate = the account plus every subsidiary at any depth, one row each; combined = those folded together: the org columns leave the result, and the rows are whatever by groups (by=total is one figure, by=project is one row per project). Without org, combined on by=org is one row per parent organization."`
-	Topic        string `json:"topic,omitempty" jsonschema:"talks only: a project or technology the session is about, matched case-insensitively against the session's title, track and abstract (e.g. OpenTelemetry). One term; the lens rejects it on every other family. A keyword match, not a taxonomy: say so in the answer."`
+	Topic        string `json:"topic,omitempty" jsonschema:"talks only: a project or technology the session is about, matched case-insensitively against the session's title, track, abstract and any tags the event captured (e.g. OpenTelemetry). One term; the lens rejects it on every other family. A keyword match, not a taxonomy: say so in the answer."`
 	StartDate    string `json:"start_date,omitempty" jsonschema:"yyyy-mm-dd, a UTC calendar day. On a window family the first day counted; on an at-date family only with period, the first period. Omitted = the family's window: the trailing 365 days before end_date on the activity, event, training and social families and on any day/week series; all history on new_members, membership_churn and the new_/lost_member_organizations families. The applied block says which ran."`
 	EndDate      string `json:"end_date,omitempty" jsonschema:"yyyy-mm-dd, a UTC calendar day. On a window family the last day counted; on an at-date family the day the state is reported on. Omitted = today (UTC). A future end_date is honoured and flagged. maintainers takes today only unless period is set."`
 	Period       string `json:"period,omitempty" jsonschema:"day, week, month, quarter or year: adds a time dimension to by; by=org with period=month is one row per organization per month. Window families bucket their dates; at-date families report the state at each period end from start_date to end_date, the last row partial when end_date falls inside a period. maintainers is the exception: today's roster only; with period, one row per period of today's maintainers active in it, not the roster at that time. Omitted = no time series; the rows are whatever by groups, one figure on by=total."`
