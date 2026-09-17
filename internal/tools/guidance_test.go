@@ -514,6 +514,27 @@ func TestStandardMetricsGuidanceContent(t *testing.T) {
 	}
 }
 
+// TestSemanticLayerGuidanceMaintainerSplitsAndRosterSources pins recipe 11's
+// role and source dimensions and split metrics, and the roster-source wording
+// in the routing bullet and recipe 12.
+func TestSemanticLayerGuidanceMaintainerSplitsAndRosterSources(t *testing.T) {
+	text := strings.Join(strings.Fields(semanticLayerGuidance), " ")
+	for _, want := range []string{
+		"maintainer_key__maintainer_role (maintainer, reviewer) and maintainer_key__maintainer_source (project_repo, inherited_kernel_tree, roster_repo) group the roster",
+		"a split queried alone omits every group with nothing in it, so read it beside active_maintainers or use the standard metric maintainers (by=role, by=source, or the split columns on total, org and project)",
+		"never Board alone",
+		"the seats that represent the organization are Board seats and Voting Rep or Alternate Voting Rep seats on any committee",
+		"lacks rosters native to v2",
+		"say which one you read",
+		"with the date where one is returned",
+		"with its date where the source returns one",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("semantic layer guidance missing %q", want)
+		}
+	}
+}
+
 // TestStandardMetricsGuidanceCarriesNoFigure pins that the guidance quotes
 // no absolute figure: a number in the guidance goes stale the day after it
 // is written and gets quoted as if it were the answer. Dates, parameter
@@ -525,6 +546,27 @@ func TestStandardMetricsGuidanceCarriesNoFigure(t *testing.T) {
 		match = strings.TrimRight(match, ".,")
 		if !allowed.MatchString(match) {
 			t.Errorf("standard metric guidance carries the figure %q; figures go stale and get quoted", match)
+		}
+	}
+}
+
+// TestStandardMetricsGuidanceMaintainerSplitsAndRepresentation pins the
+// maintainers row's role and source groupings and split columns, and the
+// organizations section's reading of seats and contacts.
+func TestStandardMetricsGuidanceMaintainerSplitsAndRepresentation(t *testing.T) {
+	text := strings.Join(strings.Fields(standardMetricsGuidance), " ")
+	for _, want := range []string{
+		"| maintainers | at-date | total, org, project, maintainer, role, source |",
+		"active_maintainers[, active_maintainers_excl_reviewers, active_reviewers, active_maintainers_excl_inherited]",
+		"by=total, org and project carry the three split columns beside active_maintainers (excl_reviewers and reviewers partition it within one project; excl_inherited drops people whose roster came only with a vendored kernel tree or another seeded roster)",
+		"by=role (maintainer, reviewer) and by=source (project_repo, inherited_kernel_tree, roster_repo) give one row per value",
+		"never Board alone",
+		"Observer, Emeritus and None seats are read from the seat rows",
+		`as recorded on its side, with the date where one is returned, never as "current"`,
+		"show both side by side, labelled, never merged",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("standard metric guidance missing %q", want)
 		}
 	}
 }

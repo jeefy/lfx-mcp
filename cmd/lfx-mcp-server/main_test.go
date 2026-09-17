@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	lfxauth "github.com/linuxfoundation/lfx-mcp/internal/auth"
 	"github.com/linuxfoundation/lfx-mcp/internal/tools"
 	"github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -172,6 +173,33 @@ func TestNewServer_LensToolsAreStaffOnly(t *testing.T) {
 		}
 		if !forStaff[name] {
 			t.Errorf("%s is not listed for a staff reader", name)
+		}
+	}
+}
+
+// TestNewServer_LensToolsAreStaffOnly_MachineAccounts pins the M2M side of the
+// staff gate: a read-scoped caller flagged as a machine account (via
+// auth.MachineAccountExtraKey, set at verification time for M2M JWTs — see
+// lfxauth.IsMachineToken) sees the lens-backed tools even without the
+// lf_staff claim, but the machine marker alone does not substitute for the
+// read/manage scope requirement.
+func TestNewServer_LensToolsAreStaffOnly_MachineAccounts(t *testing.T) {
+	machineReader := &auth.TokenInfo{
+		Scopes: []string{tools.ScopeRead},
+		Extra:  map[string]any{lfxauth.MachineAccountExtraKey: true},
+	}
+	machineNoScope := &auth.TokenInfo{
+		Extra: map[string]any{lfxauth.MachineAccountExtraKey: true},
+	}
+
+	forMachineReader := listedTools(t, machineReader)
+	forMachineNoScope := listedTools(t, machineNoScope)
+	for _, name := range staffOnlyTools {
+		if !forMachineReader[name] {
+			t.Errorf("%s is not listed for a read-scoped machine account", name)
+		}
+		if forMachineNoScope[name] {
+			t.Errorf("%s is listed for a machine account with no read/manage scope; the machine marker must not bypass scope checks", name)
 		}
 	}
 }
@@ -396,12 +424,12 @@ func TestChallengeScopeWriter_Flush(t *testing.T) {
 	}
 }
 
-// TestNewServer_Tools1AreReadScoped pins the TOOLS-1 registrations: the two
-// new tools carry the caller's own visibility through the exchanged token, so
+// TestNewServer_Tools1AreReadScoped pins the TOOLS-1 registrations: these
+// tools carry the caller's own visibility through the exchanged token, so
 // they are listed for any read-scoped caller (staff or not) and absent for a
 // token without read scope.
 func TestNewServer_Tools1AreReadScoped(t *testing.T) {
-	tools1 := []string{"count_lfx_resources", "get_org_committee_seats"}
+	tools1 := []string{"count_lfx_resources", "get_org_committee_seats", "audit_committee_coverage"}
 	reader := &auth.TokenInfo{Scopes: []string{tools.ScopeRead}}
 	noScope := &auth.TokenInfo{Scopes: []string{}}
 
