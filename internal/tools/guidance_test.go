@@ -448,6 +448,8 @@ func TestStandardMetricsGuidanceContent(t *testing.T) {
 		"say \"talks mentioning X\", not \"talks about X\"",
 		"how many OpenTelemetry talks occurred at\n  KubeCon",
 		"talks, by=event, topic=OpenTelemetry, project=cncf",
+		"title, track, abstract or tags mention OpenTelemetry",
+		"speaker, account, event,] talks",
 		"a talk about the project under another name is missed",
 		"company rows do not\n  sum to the event total",
 		"One figure, at-date: memberships, project=cncf",
