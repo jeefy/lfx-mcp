@@ -25,8 +25,8 @@ body:
     attributes:
       label: LFID username
       description: >-
-        The Linux Foundation username of the person who needs access (yours, unless filing on their behalf),
-        shown in the LFX profile. Not an e-mail.
+        The Linux Foundation username of the person who needs access, shown in the LFX profile. Not an e-mail.
+        If you file on someone's behalf, answer the rest of the form for that person.
       placeholder: jdoe
     validations:
       required: true
