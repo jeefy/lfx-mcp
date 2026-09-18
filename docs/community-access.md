@@ -54,7 +54,7 @@ your issue.
 
 ## Need help?
 
-Comment on your issue. For anything involving an e-mail address or an account problem, use
+Comment on your issue. For account problems, use
 [support.linuxfoundation.org](https://support.linuxfoundation.org). Please do not post access requests in Slack.
 
 ## Appendix: sponsoring and removing access
