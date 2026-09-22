@@ -204,6 +204,24 @@ func TestNewServer_LensToolsAreStaffOnly_MachineAccounts(t *testing.T) {
 	}
 }
 
+// TestNewServer_OCGToolsAreNotInDefaults pins the deployment-safety
+// invariant on the OCG meetup tools: their lens endpoints are not live, so a
+// staff caller on a server built from defaultTools must not see them. They
+// come on by name once the endpoints exist. Without this, adding a name to
+// defaultTools by mistake would expose a tool that returns 404s.
+func TestNewServer_OCGToolsAreNotInDefaults(t *testing.T) {
+	staff := &auth.TokenInfo{
+		Scopes: []string{tools.ScopeRead},
+		Extra:  map[string]any{tools.ClaimLFStaff: true},
+	}
+	forStaffDefaults := listedToolsFor(t, defaultTools, staff)
+	for _, name := range []string{"search_ocg_meetups", "list_ocg_meetup_filters"} {
+		if forStaffDefaults[name] {
+			t.Errorf("%s is listed on a defaultTools server; it must stay opt-in until its lens endpoint is live", name)
+		}
+	}
+}
+
 // challengeScopes are the scopes the server advertises. They mirror what
 // runHTTPServer passes to withChallengeScopes, which is the same slice it
 // hands the Protected Resource Metadata document.
