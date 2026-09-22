@@ -357,7 +357,8 @@ or account columns leave the result; any other by grouping keeps its rows,
 by=total is one figure). The
 DEFAULTS are the plain reading: a project name alone is its whole tree as ONE figure, an
 organization name alone is that account, and an activity family with no
-start_date is the trailing 365 days; every result carries an applied block
+start_date is the trailing 365 days (the meetup families read all history
+instead — set start_date for any comparison); every result carries an applied block
 saying which scope, dates and definition ran. A briefing usually wants the
 headline and the breakdown — two calls. DEPTH: on every standard metric,
 separate and combined cover a named node's tree and a company's subsidiaries
@@ -384,11 +385,14 @@ substitute a query_lfx_lens guess or a different metric. METRICS: meetups
 people; never sum rows across years). DIMENSIONS: meetup_group__city,
 meetup_group__region, meetup_group__group_name,
 meetup_group__community_slug, and metric_time__year on the event start
-date. CITY OVER TIME ("is the Austin meetup scene growing"):
+date. CITY OVER TIME ("is the Austin meetup scene growing"), with the
+window stated — this layer defaults to the trailing 365 days, which cannot
+give whole calendar years:
   metrics=meetups,meetup_attendees group_by=metric_time__year
-  where={{ Dimension('meetup_group__city') }} = 'Austin'
+  where={{ Dimension('meetup_group__city') }} = 'Austin' AND {{ TimeDimension('metric_time','DAY') }} >= '2023-01-01' AND {{ TimeDimension('metric_time','DAY') }} < '<tomorrow>'
   order_by=metric_time__year
-— the city is the chapter's home city, so verify the literal with
+— the lower bound is the first full year wanted and the upper bound is
+today so the last row is year-to-date; the city is the chapter's home city, so verify the literal with
 get_dimension_values(dimension=meetup_group__city, metrics=meetups,
 search='Austin') first (metrics is required on that action), and scope
 with meetup_group__community_slug only if the question names a foundation.
