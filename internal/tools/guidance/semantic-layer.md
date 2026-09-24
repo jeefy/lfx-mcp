@@ -53,7 +53,8 @@ Dimension qualified_names are entity__field, prefix per metric — copy from exp
   metrics   (required) CSV, copied from explore
   group_by  dimension qualified_names; metric_time__year (or __quarter, __month,
             __week, __day) for trends
-  where     one MetricFlow expression, dates yyyy-mm-dd:
+  where     one MetricFlow expression, dates yyyy-mm-dd; a recipe's <today+1>
+            stands for the day after the query date, written as a date:
             {{ Dimension('country__lf_region') }} = 'Europe' AND {{ TimeDimension('metric_time','DAY') }} >= '2024-01-01'
   order_by  '-metric' descending — NULL rows sort FIRST; re-sort client-side
   limit     optional (10-20 top-N, 50-100 breakdowns); omitted = EVERY row,
@@ -333,9 +334,11 @@ software_value, event_registrations, event_sponsorships, speakers,
 training_enrollments, certifications, social_mentions, social_reach,
 meetups, meetup_attendees; their groupings (by) are in
 read_lfx_standard_metrics_guidance. The two meetup families are the
-exception to the uniform switches: they take project only — org and
-subsidiaries are rejected, and subprojects is accepted but a no-op, since
-chapters attach at the foundation (recipe 16). by left out is the
+exception to the uniform switches: they take project only, as the
+foundation slug (cncf, not k8s) — org and subsidiaries are rejected;
+subprojects=separate is rejected since they have no by=project, and
+combined/excluded are no-ops, since chapters attach at the foundation
+(recipe 16). by left out is the
 first listed, and the scope supplies the other axis (by=project with org =
 that company's projects; by=org with project = that project's companies).
 period adds a time dimension to by: by=org with period=month is one row per
@@ -364,7 +367,7 @@ headline and the breakdown — two calls. DEPTH: on every standard metric,
 separate and combined cover a named node's tree and a company's subsidiaries
 at ANY depth. Results come back in the same words (account, parent_org, project,
 foundation, period), and order_by takes them (the meetup families
-excepted from DEPTH: no tree, subprojects a no-op).
+excepted from DEPTH: no tree, subprojects nothing to walk).
 There is no free filter on a standard metric: a slice the switches, the dates and
 the period cannot express is an explore + query question, and its answer is
 labelled ad hoc.
@@ -389,10 +392,11 @@ date. CITY OVER TIME ("is the Austin meetup scene growing"), with the
 window stated — this layer defaults to the trailing 365 days, which cannot
 give whole calendar years:
   metrics=meetups,meetup_attendees group_by=metric_time__year
-  where={{ Dimension('meetup_group__city') }} = 'Austin' AND {{ TimeDimension('metric_time','DAY') }} >= '2023-01-01' AND {{ TimeDimension('metric_time','DAY') }} < '2026-09-25'
+  where={{ Dimension('meetup_group__city') }} = 'Austin' AND {{ TimeDimension('metric_time','DAY') }} >= '2023-01-01' AND {{ TimeDimension('metric_time','DAY') }} < '<today+1>'
   order_by=metric_time__year
 — the lower bound is the first full year wanted and the upper bound is
-the day after today (exclusive) so the last row is year-to-date; the city is the chapter's home city, so verify the literal with
+<today+1>, the day after the query date written as yyyy-mm-dd (exclusive),
+so the last row is year-to-date and the recipe never goes stale; the city is the chapter's home city, so verify the literal with
 get_dimension_values(dimension=meetup_group__city, metrics=meetups,
 search='Austin') first (metrics is required on that action), and scope
 with meetup_group__community_slug only if the question names a foundation.

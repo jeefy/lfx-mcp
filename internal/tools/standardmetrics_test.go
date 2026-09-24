@@ -267,7 +267,9 @@ func TestStandardMetrics_RequiredParamSurvivesCompaction(t *testing.T) {
 	for _, want := range append([]string{
 		"metrics/group_by", "read_lfx_standard_metrics_guidance", "start_date, end_date and period",
 		"WINDOW", "AT-DATE family (" + strings.Join(atDate, ", ") + ")", "state on end_date",
-		"meetups and meetup_attendees take project only (org and subsidiaries rejected, subprojects a no-op) and read all history when start_date is omitted",
+		"meetups and meetup_attendees take project only, and as the FOUNDATION slug (cncf, not k8s",
+		"subprojects=separate is rejected (no by=project), combined and excluded are no-ops",
+		"they read all history when start_date is omitted",
 	}, standardMetricNames...) {
 		if !strings.Contains(desc, want) {
 			t.Errorf("metric description does not mention %q — the contract must survive schema compaction", want)

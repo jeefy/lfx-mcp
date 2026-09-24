@@ -233,8 +233,8 @@ series adds `period` in front; an at-date series adds `period_end` too.
 | certifications | window | total, org | Completed certifications by enrollment date | [account, parent_org,] total_certifications | Additive; counted at enrollment time; the edX branch has no account and sits in the NULL account row with the placeholder learners |
 | social_mentions | window | total, project, network, sentiment | Social listening mentions, distinct authors and sentiment by mention date | [project, project_name / network / sentiment,] social_listening_mentions, social_listening_unique_authors, social_listening_positive_mentions, social_listening_negative_mentions | Mention counts are additive; unique_authors is a distinct count; neutral or unknown sentiment is in neither positive nor negative; no org scope |
 | social_reach | window | total, project | Potential reach of the mentions by mention date | [project, project_name,] social_listening_total_author_followers, social_listening_avg_author_followers | The sum counts a prolific author once per mention; the average is per mention; NULL follower counts excluded; no org scope |
-| meetups | window | total, community, region, group, city | Open Community Group meetups (ocgroups.dev chapter events) starting in the window | [community / region / group, group_slug, community, city / city, region,] meetups | Additive, counted on the event start date; ALL history when start_date is omitted, unlike the activity families; period=year is the yearly series; a group with no event in the window is absent rather than a zero row; NULL region or city rows are chapters with none set; community is the foundation (scope with project=cncf, never a community name); no org scope; subprojects accepted but a no-op, chapters attach at the foundation |
-| meetup_attendees | window | total, community, region, group, city | Distinct people who attended Open Community Group meetups starting in the window | [community / region / group, group_slug, community, city / city, region,] meetup_attendees | A distinct-person count over the window: never sum rows across groupings or periods, take a wider window instead; period=year gives attendance per year, the current year to date; ALL history when start_date is omitted; NULL region or city rows are chapters with none set; no org scope; subprojects a no-op |
+| meetups | window | total, community, region, group, city | Open Community Group meetups (ocgroups.dev chapter events) starting in the window | [community / region / group, group_slug, community, city / city, region,] meetups | Additive, counted on the event start date; ALL history when start_date is omitted, unlike the activity families; period=year is the yearly series; a group with no event in the window is absent rather than a zero row; NULL region or city rows are chapters with none set; community is the foundation (scope with project=cncf, never a community name); no org scope; subprojects=separate rejected (no by=project), combined and excluded no-ops, chapters attach at the foundation |
+| meetup_attendees | window | total, community, region, group, city | Distinct people who attended Open Community Group meetups starting in the window | [community / region / group, group_slug, community, city / city, region,] meetup_attendees | A distinct-person count over the window: never sum rows across groupings or periods, take a wider window instead; period=year gives attendance per year, the current year to date; ALL history when start_date is omitted; NULL region or city rows are chapters with none set; no org scope; subprojects as on meetups |
 
 ## Organizations: account and parent_org
 
@@ -295,12 +295,13 @@ ocgroups.dev — community-run meetup groups, not LF conferences
 (event_registrations) and not LFX project meetings (the meeting tools).
 Both attach at COMMUNITY level, and a community is a foundation: scope with
 the foundation's slug (project=cncf), never a community name. org and
-subsidiaries do not apply and are rejected. subprojects is accepted but a
-NO-OP: chapters hang off the foundation, not off projects, so there is no
-tree to walk and subprojects=separate yields no project rows — the
-breakdowns these families offer are by=community, region, group and city,
-and period for time. The DEPTH rule under "Projects and subprojects" does
-not apply here.
+subsidiaries do not apply and are rejected. subprojects follows the
+general rule with nothing to walk: chapters hang off the foundation, not
+off projects, so combined and excluded are NO-OPS, and subprojects=separate
+is REJECTED like any separate without by=project — these families have no
+by=project; their breakdowns are by=community, region, group and city, and
+period for time. The DEPTH rule under "Projects and subprojects" does not
+apply here.
 
 meetups counts events on their start date and is additive; meetup_attendees
 is a distinct-person count over the window, so two years' rows do not sum
