@@ -389,10 +389,10 @@ date. CITY OVER TIME ("is the Austin meetup scene growing"), with the
 window stated — this layer defaults to the trailing 365 days, which cannot
 give whole calendar years:
   metrics=meetups,meetup_attendees group_by=metric_time__year
-  where={{ Dimension('meetup_group__city') }} = 'Austin' AND {{ TimeDimension('metric_time','DAY') }} >= '2023-01-01' AND {{ TimeDimension('metric_time','DAY') }} < '<tomorrow>'
+  where={{ Dimension('meetup_group__city') }} = 'Austin' AND {{ TimeDimension('metric_time','DAY') }} >= '2023-01-01' AND {{ TimeDimension('metric_time','DAY') }} < '2026-09-25'
   order_by=metric_time__year
 — the lower bound is the first full year wanted and the upper bound is
-today so the last row is year-to-date; the city is the chapter's home city, so verify the literal with
+the day after today (exclusive) so the last row is year-to-date; the city is the chapter's home city, so verify the literal with
 get_dimension_values(dimension=meetup_group__city, metrics=meetups,
 search='Austin') first (metrics is required on that action), and scope
 with meetup_group__community_slug only if the question names a foundation.
