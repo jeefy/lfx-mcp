@@ -250,14 +250,14 @@ func normalizeSlugs(slugs []string) ([]string, error) {
 // there before its first query.
 const exploreSemanticLayerDescription = `If a standard metric answers the question (inventory: read_lfx_standard_metrics_guidance), call query_lfx_standard_metrics and do not explore first.
 
-The LFX Semantic Layer covers contributor, contribution, membership, revenue, event, registration, speaker, sponsorship, enrollment, certification, maintainer, health, engagement score, project, meeting (occurrences, minutes, attendance), survey (NPS), web session, paid ads and social listening (mentions, sentiment, reach) metrics, sliceable by country, region, parent organization or project tree. This finds what can be measured; query_lfx_semantic_layer runs it. Start here unless exact names are known.
+The LFX Semantic Layer covers contributor, contribution, membership, revenue, event, registration, speaker, sponsorship, enrollment, certification, maintainer, health, engagement score, project, meeting (occurrences, scheduled minutes, attendance), survey (NPS), web session, paid ads and social listening (mentions, sentiment, reach) metrics, sliceable by country, region, parent organization or project tree. This finds what can be measured; query_lfx_semantic_layer runs it. Start here unless exact names are known.
 
 If you have not read read_lfx_semantic_layer_guidance yet this session, read it BEFORE using this tool; one read also covers query_lfx_semantic_layer.
 
 ACTIONS
-- list_metrics(search): one topic word from the list above
+- list_metrics(search): one topic word from above
 - get_dimensions(metrics, search): a metric's group_by/filter surface; several metrics return shared dimensions only
-- get_dimension_values(dimension, metrics, search): stored literals - call before filtering on an unseen value; unknowns return zero rows, not an error ('Asia Pacific' not 'APAC')
+- get_dimension_values(dimension, metrics, search): stored literals - call before filtering on unseen values; unknowns return zero rows, not an error ('Asia Pacific' not 'APAC')
 
 Names are entity__field with per-metric prefixes - copy qualified_names, never assemble. Resolve project slugs via search_projects, org legal names via search_b2b_orgs. query_lfx_lens is ONLY for cross-domain joins or guidance-sanctioned fallback. Board/committee/ambassador rosters: committee tools.`
 

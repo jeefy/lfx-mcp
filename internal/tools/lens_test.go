@@ -240,6 +240,8 @@ func TestExploreSemanticLayerDescription(t *testing.T) {
 		// The covered domains, named so routing works from this tool.
 		"contributor, contribution, membership, revenue, event, registration, speaker, sponsorship, enrollment, certification, maintainer, health",
 		"engagement score", "survey (NPS)", "web session", "paid ads",
+		// Scheduled, not actual, duration: the data cannot measure time spent.
+		"meeting (occurrences, scheduled minutes, attendance)",
 		"country, region, parent organization or project tree",
 		// Guidance-first, once per session, shared with the query tool.
 		"read_lfx_semantic_layer_guidance",
