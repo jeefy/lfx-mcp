@@ -176,7 +176,8 @@ func TestCountLFXResources_RegistrantGate(t *testing.T) {
 	t.Run("neither", func(t *testing.T) {
 		api := setupCountTest(t)
 		api.GrantRelations()
-		api.Respond(resourcesPath, page(nil, ""))
+		api.Respond(resourcesPath, page(nil, "")) // e-mail lookup
+		api.Respond(resourcesPath, page(nil, "")) // username lookup
 		runCountGateCases(t, api, []countArgsCase{
 			{"hidden meeting", CountLFXResourcesArgs{Type: typ, Parent: "meeting:M1"}, false},
 		})

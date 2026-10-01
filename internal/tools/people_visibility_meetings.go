@@ -35,10 +35,10 @@ const (
 )
 
 // registrantViews decides the registrantView of each meeting ID for the
-// caller: one access-check batch for organizer, then one registrant query,
-// as the caller, for the caller's own registrant records (matched on the
-// e-mail tag, raw and lowercased, as Self Serve matches on e-mail) in the
-// remaining meetings.
+// caller: one access-check batch for organizer, then registrant queries, as
+// the caller, for the caller's own registrant records in the remaining
+// meetings (callerRegistrantMeetings: the e-mail or the username, as LFX
+// Self Serve matches them).
 func registrantViews(ctx context.Context, clients *lfxv2.Clients, tokenInfo *auth.TokenInfo, meetingIDs []string) (map[string]registrantView, error) {
 	views := make(map[string]registrantView, len(meetingIDs))
 	ids := dedupeStrings(meetingIDs)
@@ -62,11 +62,10 @@ func registrantViews(ctx context.Context, clients *lfxv2.Clients, tokenInfo *aut
 		views[id] = registrantHidden
 		remaining = append(remaining, id)
 	}
-	email := callerEmail(tokenInfo)
-	if len(remaining) == 0 || email == "" {
+	if len(remaining) == 0 {
 		return views, nil
 	}
-	registered, err := callerRegistrantMeetings(ctx, clients, email, remaining)
+	registered, err := callerRegistrantMeetings(ctx, clients, tokenInfo, remaining)
 	if err != nil {
 		return nil, err
 	}
@@ -79,13 +78,49 @@ func registrantViews(ctx context.Context, clients *lfxv2.Clients, tokenInfo *aut
 }
 
 // callerRegistrantMeetings returns the meeting IDs, among meetingIDs, that
-// hold a registrant record for email, from registrant queries as the caller:
-// the e-mail tag (raw and lowercased) must match and the meeting_id must be
-// one of the IDs, sent in chunks of peopleFilterChunk.
-func callerRegistrantMeetings(ctx context.Context, clients *lfxv2.Clients, email string, meetingIDs []string) (map[string]bool, error) {
-	resourceType := meetingRegistrantResourceType
-	emailTags := dedupeStrings([]string{"email:" + email, "email:" + strings.ToLower(email)})
+// hold a registrant record of the caller, from registrant queries as the
+// caller, matching as LFX Self Serve does on the e-mail or the username: the
+// e-mail tag (raw and lowercased) first, then, for the meetings not found
+// that way, the username field. Each query is bounded to the meeting IDs, sent
+// in chunks of peopleFilterChunk. A caller with neither claim holds none.
+func callerRegistrantMeetings(ctx context.Context, clients *lfxv2.Clients, tokenInfo *auth.TokenInfo, meetingIDs []string) (map[string]bool, error) {
 	registered := make(map[string]bool)
+	if email := callerEmail(tokenInfo); email != "" {
+		emailTags := dedupeStrings([]string{"email:" + email, "email:" + strings.ToLower(email)})
+		err := registrantLookup(ctx, clients, meetingIDs, registered, func(p *querysvc.QueryResourcesPayload) {
+			p.Tags = emailTags
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+	username := callerUsername(tokenInfo)
+	if username == "" {
+		return registered, nil
+	}
+	var rest []string
+	for _, id := range meetingIDs {
+		if !registered[id] {
+			rest = append(rest, id)
+		}
+	}
+	if len(rest) == 0 {
+		return registered, nil
+	}
+	err := registrantLookup(ctx, clients, rest, registered, func(p *querysvc.QueryResourcesPayload) {
+		p.FiltersAll = []string{"username:" + username}
+	})
+	if err != nil {
+		return nil, err
+	}
+	return registered, nil
+}
+
+// registrantLookup runs one registrant query per chunk of meetingIDs, with
+// match setting the identity terms, and marks the meeting of every record
+// returned in registered.
+func registrantLookup(ctx context.Context, clients *lfxv2.Clients, meetingIDs []string, registered map[string]bool, match func(*querysvc.QueryResourcesPayload)) error {
+	resourceType := meetingRegistrantResourceType
 	for _, chunk := range chunkStrings(meetingIDs, peopleFilterChunk) {
 		filtersOr := make([]string, 0, len(chunk))
 		for _, id := range chunk {
@@ -94,19 +129,20 @@ func callerRegistrantMeetings(ctx context.Context, clients *lfxv2.Clients, email
 		var pageToken *string
 		for pages := 0; ; pages++ {
 			if pages >= peopleLookupMaxPages {
-				return nil, errPeopleVisibilityCap
+				return errPeopleVisibilityCap
 			}
-			result, err := clients.QuerySvc.QueryResources(ctx, &querysvc.QueryResourcesPayload{
+			payload := &querysvc.QueryResourcesPayload{
 				Version:   "1",
 				Type:      &resourceType,
-				Tags:      emailTags,
 				FiltersOr: filtersOr,
 				PageSize:  peopleLookupPageSize,
 				Sort:      "name_asc",
 				PageToken: pageToken,
-			})
+			}
+			match(payload)
+			result, err := clients.QuerySvc.QueryResources(ctx, payload)
 			if err != nil {
-				return nil, err
+				return err
 			}
 			for _, r := range result.Resources {
 				if id := dataString(resourceData(r), "meeting_id"); id != "" {
@@ -119,7 +155,7 @@ func callerRegistrantMeetings(ctx context.Context, clients *lfxv2.Clients, email
 			pageToken = result.PageToken
 		}
 	}
-	return registered, nil
+	return nil
 }
 
 // projectRegistrant reduces one v1_meeting_registrant record to the view. The

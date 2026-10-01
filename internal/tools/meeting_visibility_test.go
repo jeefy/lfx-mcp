@@ -254,7 +254,8 @@ func TestSearchMeetingRegistrants_ViewsPerMeeting(t *testing.T) {
 	t.Run("hidden: nothing, and nothing is read", func(t *testing.T) {
 		api := setupMeetingLookupTest(t)
 		api.GrantRelations()
-		api.Respond(resourcesPath, page(nil, "")) // the self lookup
+		api.Respond(resourcesPath, page(nil, "")) // the e-mail lookup
+		api.Respond(resourcesPath, page(nil, "")) // the username lookup
 		res, out, err := handleSearchMeetingRegistrants(context.Background(), stubCallToolRequest(), SearchMeetingRegistrantsArgs{MeetingID: meetingHidden, PageSize: 1})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -262,8 +263,8 @@ func TestSearchMeetingRegistrants_ViewsPerMeeting(t *testing.T) {
 		if len(out.Resources) != 0 || out.PageToken != "" {
 			t.Errorf("expected an empty page with no token: %+v", out)
 		}
-		if len(api.RequestsTo(resourcesPath)) != 1 {
-			t.Error("the registrant search must not run for a hidden meeting")
+		if len(api.RequestsTo(resourcesPath)) != 2 {
+			t.Error("the registrant search must not run for a hidden meeting: only the two self lookups")
 		}
 		if len(out.Warnings) != 1 || !strings.Contains(out.Warnings[0], "not proof of absence") || strings.Contains(allResultText(t, res), "more pages") {
 			t.Errorf("the empty page carries the standard warning only: %v", out.Warnings)
@@ -286,18 +287,86 @@ func TestSearchMeetingRegistrants_ScopeWithoutMeetingIsRefused(t *testing.T) {
 	}
 }
 
-func TestSearchMeetingRegistrants_NoEmailClaimMeansNoRosterView(t *testing.T) {
+func TestSearchMeetingRegistrants_NoIdentityMeansNoRosterView(t *testing.T) {
 	api := setupMeetingLookupTest(t)
 	api.GrantRelations()
 	req := stubCallToolRequest()
 	delete(req.Extra.TokenInfo.Extra, ClaimEmail)
+	delete(req.Extra.TokenInfo.Extra, "username")
 	_, out, err := handleSearchMeetingRegistrants(context.Background(), req, SearchMeetingRegistrantsArgs{MeetingID: meetingRegistered})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(out.Resources) != 0 || len(api.RequestsTo(resourcesPath)) != 0 {
-		t.Errorf("without an e-mail claim the meeting is hidden: no self lookup, no search, nothing shown: %d records, %d queries", len(out.Resources), len(api.RequestsTo(resourcesPath)))
+		t.Errorf("without a username or an e-mail claim the meeting is hidden: no self lookup, no search, nothing shown: %d records, %d queries", len(out.Resources), len(api.RequestsTo(resourcesPath)))
 	}
+}
+
+// LFX Self Serve finds the caller's registration on the e-mail or the
+// username, so a registration stored under another address still opens the
+// join-page roster.
+func TestSearchMeetingRegistrants_RegistrationMatchesTheUsernameToo(t *testing.T) {
+	assertUsernameLookup := func(t *testing.T, r stubAPIRequest) {
+		t.Helper()
+		if got := strings.Join(r.Query["filters_all"], " "); got != "username:"+stubCallerUsername {
+			t.Errorf("username lookup filters_all = %q", got)
+		}
+		if got := strings.Join(r.Query["filters_or"], " "); got != "meeting_id:"+meetingRegistered {
+			t.Errorf("username lookup filters_or = %q", got)
+		}
+		if len(r.Query["tags"]) != 0 {
+			t.Errorf("username lookup must not carry the e-mail tags: %v", r.Query["tags"])
+		}
+		assertExchangedAuth(t, r)
+	}
+	t.Run("registered under another e-mail", func(t *testing.T) {
+		api := setupMeetingLookupTest(t)
+		api.GrantRelations()
+		api.Respond(resourcesPath, page(nil, ""))                           // e-mail lookup
+		api.Respond(resourcesPath, selfRegistrantLookup(meetingRegistered)) // username lookup
+		api.Respond(resourcesPath, registrantPage("", meetingRegistered))
+		res, out, err := handleSearchMeetingRegistrants(context.Background(), stubCallToolRequest(), SearchMeetingRegistrantsArgs{MeetingID: meetingRegistered})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(out.Resources) == 0 || strings.Contains(allResultText(t, res), "person0@example.test") {
+			t.Fatalf("expected the roster without e-mail, got %s", allResultText(t, res))
+		}
+		reqs := api.RequestsTo(resourcesPath)
+		if len(reqs) != 3 {
+			t.Fatalf("expected the e-mail lookup, the username lookup and the search, got %d", len(reqs))
+		}
+		assertUsernameLookup(t, reqs[1])
+	})
+	t.Run("no e-mail claim", func(t *testing.T) {
+		api := setupMeetingLookupTest(t)
+		api.GrantRelations()
+		api.Respond(resourcesPath, selfRegistrantLookup(meetingRegistered))
+		api.Respond(resourcesPath, registrantPage("", meetingRegistered))
+		req := stubCallToolRequest()
+		delete(req.Extra.TokenInfo.Extra, ClaimEmail)
+		_, out, err := handleSearchMeetingRegistrants(context.Background(), req, SearchMeetingRegistrantsArgs{MeetingID: meetingRegistered})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		reqs := api.RequestsTo(resourcesPath)
+		if len(out.Resources) == 0 || len(reqs) != 2 {
+			t.Fatalf("expected the roster after one username lookup, got %d records, %d queries", len(out.Resources), len(reqs))
+		}
+		assertUsernameLookup(t, reqs[0])
+	})
+	t.Run("found by e-mail: no username lookup", func(t *testing.T) {
+		api := setupMeetingLookupTest(t)
+		api.GrantRelations()
+		api.Respond(resourcesPath, selfRegistrantLookup(meetingRegistered))
+		api.Respond(resourcesPath, registrantPage("", meetingRegistered))
+		if _, _, err := handleSearchMeetingRegistrants(context.Background(), stubCallToolRequest(), SearchMeetingRegistrantsArgs{MeetingID: meetingRegistered}); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if n := len(api.RequestsTo(resourcesPath)); n != 2 {
+			t.Errorf("a meeting found by e-mail needs no username lookup, got %d queries", n)
+		}
+	})
 }
 
 func TestSearchMeetingRegistrants_FailsClosed(t *testing.T) {
@@ -390,7 +459,8 @@ func TestGetMeetingRegistrant_Views(t *testing.T) {
 		api := setupMeetingLookupTest(t)
 		api.GrantRelations()
 		api.Respond(resourcesPath, page([]string{registrantDoc("r1", meetingHidden, "person@example.test", false)}, ""))
-		api.Respond(resourcesPath, page(nil, ""))
+		api.Respond(resourcesPath, page(nil, "")) // e-mail lookup
+		api.Respond(resourcesPath, page(nil, "")) // username lookup
 		res, out, _ := handleGetMeetingRegistrant(context.Background(), stubCallToolRequest(), GetMeetingRegistrantArgs{UID: "r1"})
 		if !res.IsError || strings.TrimSpace(allResultText(t, res)) != lookupNotVisibleMessage("meeting registrant", "r1") || out != nil {
 			t.Fatalf("expected the not-visible message, got %s", allResultText(t, res))
