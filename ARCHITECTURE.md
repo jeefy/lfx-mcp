@@ -57,7 +57,9 @@ Tool registration is gated on two access levels derived from the caller's token:
 | Read   | token holds `read:all` **or** `manage:all` | All read-only tools       |
 | Manage | token holds `manage:all`                   | Read + write/delete tools |
 
-An additional requirement gates the `query_lfx_lens` tool on top of the read scope requirement:
+An additional requirement gates the staff-only tools (`query_lfx_lens`, `explore_lfx_semantic_layer`,
+`query_lfx_semantic_layer`, `query_lfx_standard_metrics`, `read_lfx_semantic_layer_guidance` and
+`read_lfx_standard_metrics_guidance`) on top of the read scope requirement:
 the caller must be staff-equivalent, either via the `lf_staff` claim (from the
 `http://lfx.dev/claims/lf_staff` custom claim) or via the machine-account marker set for M2M
 callers (see "MCP-brokered service APIs" below).
@@ -71,6 +73,16 @@ token signature via JWKS (cached), checks the audience, and extracts scopes and 
 MCP clients that implement [OAuth 2.0 Protected Resource Metadata (RFC 9728)](https://www.rfc-editor.org/rfc/rfc9728)
 first fetch `/.well-known/oauth-protected-resource` from the MCP server to discover the Auth0
 authorization server URL before starting the OAuth flow.
+
+### Sign-in entitlement
+
+An end-user sign-in through LFX succeeds only when the LFX account has been enabled for MCP access
+and the sign-in comes from a supported client. This is enforced at sign-in, before any request
+reaches this server. The server keeps no list of enabled accounts and does not re-check the
+entitlement per request; an end-user token is issued only after that check. After that, this
+server's scope and staff-only checks (see "Stateless HTTP and per-request tool gating" above) and
+the user's own LFX permissions upstream decide what the caller can see and do. How a community member requests access is described in
+[docs/community-access.md](docs/community-access.md).
 
 ### M2M client credentials
 
@@ -119,7 +131,32 @@ present in the chain. This token is also cached and shared across all M2M and AP
 LFX Self Service tools (`search_projects`, `get_committee`, member, meeting, mailing list tools,
 etc.) pass the LFX token (CTE token for end-user callers; MCP-server M2M token for M2M callers)
 directly to LFX API calls. Authorization is handled natively by LFX and its OpenFGA backend; the
-MCP server performs no explicit access-check of its own for these tools.
+MCP server performs no explicit access-check of its own for these tools. A tool reports an
+upstream error through `friendlyAPIError` (`internal/tools/helpers.go`), which reads the HTTP
+status with `lfxv2.UpstreamStatus` and returns a tool error, never a JSON-RPC error:
+
+- **401**: only `Unauthorized (HTTP 401)`, with or without a service-authored message. A 401
+  means the service did not accept the credentials this server sent: the token exchanged for an
+  HTTP caller (whose own login is verified before any tool runs), the server's M2M token, or in
+  stdio mode the `-lfx_token` token. Asking for access does not fix any of these. The tool handler logs it at ERROR level with the request's
+  context, as it logs every upstream error; a Goa typed error whose `Error()` is blank is
+  written there as its name and message.
+- **403**: the standard access message when it carries no service-authored message (for example,
+  a bare status with no body) or when the endpoint's Goa design does not declare it. A 403 on an
+  endpoint that declares it, carrying the service's own message, is shown as the client's typed
+  error renders: `Forbidden: <message>` for the meeting service, the only service whose endpoints
+  the tools call that declares 403 (a typed error with its own `Error()` text would show only
+  that text). On a declared
+  status, a body without the fields the service's error body requires (both `code` and `message`
+  for the meeting service) counts as carrying no message.
+- **404**: the standard access message, from any service, since a 404 cannot tell a resource
+  that does not exist from one the caller may not see. A declared 404 whose body the client
+  cannot decode or validate keeps Goa's decoding or validation error text.
+- Any other status, decode error or network error is shown as the upstream error text.
+
+Partial-result warnings, such as the settings warnings of `get_project` and `get_committee` and
+the recording and transcript warnings of `get_past_meeting`, describe the upstream error the same
+way after their own prefix.
 
 ### MCP-brokered service APIs (per-service M2M token)
 
@@ -128,7 +165,7 @@ authorization layer. The MCP server acts as the authorization gateway, with diff
 control mechanisms per service:
 
 **LFX Lens** — access requires read scope (`read:all` or `manage:all`) plus staff-equivalent
-status in the caller's MCP JWT. The tool is not registered for callers missing either
+status in the caller's MCP JWT. The Lens-backed tools and their guidance are not registered for callers missing either
 requirement, so no runtime access-check is performed. Staff-equivalent status is satisfied by
 either the `lf_staff` claim (end-user callers whose LDAP groups include `lf-staff` or
 `lf-contractor`) or the machine-account marker (M2M callers, identified by an Auth0 subject

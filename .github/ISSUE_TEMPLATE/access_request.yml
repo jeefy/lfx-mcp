@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: MIT
 name: LFX MCP access request
 description: Request or remove LFX MCP Server access for a community member
-title: "[access] <LFID username>"
+title: "[access] MCP access request"
 assignees: ["seberslinux"]
 body:
   - type: markdown
@@ -13,13 +13,6 @@ body:
 
         [playbook]: https://github.com/linuxfoundation/lfx-mcp/blob/main/docs/community-access.md
         [readme]: https://github.com/linuxfoundation/lfx-mcp/blob/main/README.md
-  - type: dropdown
-    id: request_type
-    attributes:
-      label: Request
-      options: ["Grant access", "Remove access"]
-    validations:
-      required: true
   - type: input
     id: lfid
     attributes:
@@ -28,6 +21,13 @@ body:
         The Linux Foundation username of the person who needs access, shown in the LFX profile. Not an e-mail.
         If you file on someone's behalf, answer the rest of the form for that person.
       placeholder: jdoe
+    validations:
+      required: true
+  - type: dropdown
+    id: request_type
+    attributes:
+      label: Request
+      options: ["Grant access", "Remove access"]
     validations:
       required: true
   - type: textarea
@@ -41,8 +41,8 @@ body:
   - type: markdown
     attributes:
       value: |
-        ### Additional data
-        Optional; it may make approval faster if you can provide it.
+        ### Additional data (optional)
+        It may make approval faster if you can provide it.
   - type: input
     id: where
     attributes:
