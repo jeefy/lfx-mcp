@@ -1,6 +1,7 @@
 // Copyright The Linux Foundation and contributors.
 // SPDX-License-Identifier: MIT
 
+// Package tools provides MCP tool implementations for the LFX MCP server.
 package tools
 
 import (
@@ -213,6 +214,23 @@ func TestParticipants_DedupeMergesShownRecordsBeforeProjection(t *testing.T) {
 	}
 }
 
+func TestParticipants_ProjectionNeverRunsBeforeDedupe(t *testing.T) {
+	// Two different hosts with the same name but different e-mails: identity
+	// matching on the full records keeps them apart; matching on the
+	// projected stubs (name only) would merge two people into one.
+	api := setupParticipantTest(t)
+	api.GrantRelations()
+	api.Respond(resourcesPath, pastDocs(pastPublic))
+	api.Respond(resourcesPath, page([]string{
+		participantDocFor("h1", pastPublic, "a@example.test", "Hosty", "H", "", true, true),
+		participantDocFor("h2", pastPublic, "b@example.test", "Hosty", "H", "", true, false),
+	}, ""))
+	_, out, _ := handleSearchPastMeetingParticipants(context.Background(), stubCallToolRequest(), SearchPastMeetingParticipantsArgs{PastMeetingID: pastPublic})
+	if got := uids(participantsOf(t, out)); got != "h1 h2" {
+		t.Fatalf("two people with one name must stay two records, got %q", got)
+	}
+}
+
 func TestParticipants_HiddenRecordsNeverMergeIntoShownOnes(t *testing.T) {
 	// One person with records in a meeting the caller organizes and in a
 	// private meeting of the same project. The private record must neither
@@ -283,6 +301,91 @@ func TestParticipants_HiddenRecordsNeverMergeIntoShownOnes(t *testing.T) {
 			t.Errorf("the stranger's record counts nowhere: %d/%d", *result.Records, *result.People)
 		}
 	})
+}
+
+func TestParticipants_LegacyCommitteeUIDGrantsGroupMembers(t *testing.T) {
+	// A past-meeting record that names its group only in the top-level
+	// committee_uid (empty committees array) still counts as that group's
+	// meeting; the same group named in both places is checked once.
+	legacyDoc := `{"type":"v1_past_meeting","id":"` + pastCommittee + `","data":{"meeting_and_occurrence_id":"` + pastCommittee + `","visibility":"private","restricted":false,"committee_uid":"` + memberOfGroup + `","committees":[{"uid":"` + memberOfGroup + `"}]}}`
+	api := setupParticipantTest(t)
+	api.GrantRelations("committee:" + memberOfGroup + "#member")
+	api.Respond(resourcesPath, page([]string{legacyDoc}, ""))
+	api.Respond(resourcesPath, page(meetingRoster(pastCommittee), ""))
+	_, out, _ := handleSearchPastMeetingParticipants(context.Background(), stubCallToolRequest(), SearchPastMeetingParticipantsArgs{PastMeetingID: pastCommittee})
+	if got := uids(participantsOf(t, out)); got != "host-44 self-44" {
+		t.Fatalf("a group member has full access, got %q", got)
+	}
+	bodies := api.AccessCheckBodies()
+	if len(bodies) != 1 || len(bodies[0]) != 5 || !strings.Contains(strings.Join(bodies[0], " "), "committee:"+memberOfGroup+"#member") {
+		t.Errorf("expected four meeting relations plus one group membership, got %v", bodies)
+	}
+	// And with the array empty, the top-level field alone suffices.
+	legacyOnly := strings.Replace(legacyDoc, `"committees":[{"uid":"`+memberOfGroup+`"}]`, `"committees":[]`, 1)
+	api2 := setupParticipantTest(t)
+	api2.GrantRelations("committee:" + memberOfGroup + "#member")
+	api2.Respond(resourcesPath, page([]string{legacyOnly}, ""))
+	api2.Respond(resourcesPath, page(meetingRoster(pastCommittee), ""))
+	_, out2, _ := handleSearchPastMeetingParticipants(context.Background(), stubCallToolRequest(), SearchPastMeetingParticipantsArgs{PastMeetingID: pastCommittee})
+	if got := uids(participantsOf(t, out2)); got != "host-44 self-44" {
+		t.Fatalf("top-level committee_uid alone must grant the group view, got %q", got)
+	}
+}
+
+func TestParticipants_PerMeetingDedupeKeepsPageOrder(t *testing.T) {
+	// A sorted page interleaves meetings; merging within each meeting must
+	// not regroup the page by meeting.
+	api := setupParticipantTest(t)
+	api.GrantRelations("v1_past_meeting:"+pastOrganized+"#organizer", "v1_past_meeting:"+pastPublic+"#organizer")
+	api.Respond(resourcesPath, page([]string{
+		participantDocFor("alice", pastOrganized, "alice@example.test", "Alice", "A", "", false, true),
+		participantDocFor("bob", pastPublic, "bob@example.test", "Bob", "B", "", false, true),
+		participantDocFor("carol", pastOrganized, "carol@example.test", "Carol", "C", "", false, true),
+		participantDocFor("carol-2", pastOrganized, "carol@example.test", "Carol", "C", "", false, false),
+	}, ""))
+	api.Respond(resourcesPath, pastDocs(pastOrganized, pastPublic))
+	_, out, _ := handleSearchPastMeetingParticipants(context.Background(), stubCallToolRequest(), SearchPastMeetingParticipantsArgs{ProjectUID: "P1"})
+	if got := uids(participantsOf(t, out)); got != "alice bob carol" {
+		t.Fatalf("expected the page order with carol merged in place, got %q", got)
+	}
+}
+
+func TestParticipants_DateRangeCapCountsShownRecordsOnly(t *testing.T) {
+	// The hidden meeting holds more raw records than the whole cap, none of
+	// them shown; the organized meeting after it must still be drained in
+	// full and no truncation reported.
+	api := setupParticipantTest(t)
+	api.GrantRelations("v1_past_meeting:" + pastOrganized + "#organizer")
+	api.Respond(resourcesPath, page([]string{pastMeetingDoc(pastHidden), pastMeetingDoc(pastOrganized)}, ""))
+	api.Respond(resourcesPath, pastDocs(pastHidden, pastOrganized))
+	pages := participantMaxRecords/participantDrainPageSize + 1
+	for p := 0; p < pages; p++ {
+		docs := make([]string, 0, participantDrainPageSize)
+		for i := 0; i < participantDrainPageSize; i++ {
+			n := p*participantDrainPageSize + i
+			docs = append(docs, participantDocFor(fmt.Sprintf("hid-%d", n), pastHidden, fmt.Sprintf("hid%d@example.test", n), "Hid", fmt.Sprint(n), "", false, true))
+		}
+		token := fmt.Sprintf("t%d", p+1)
+		if p == pages-1 {
+			token = ""
+		}
+		api.Respond(resourcesPath, page(docs, token))
+	}
+	api.Respond(resourcesPath, page(meetingRoster(pastOrganized), ""))
+	res, out, _ := handleSearchPastMeetingParticipants(context.Background(), stubCallToolRequest(), SearchPastMeetingParticipantsArgs{ProjectUID: "P1", DateFrom: "2026-06-01"})
+	if res.IsError {
+		t.Fatal(allResultText(t, res))
+	}
+	result := out.(participantSearchResult)
+	if result.TruncatedRecords || strings.Contains(result.Note, "record cap") {
+		t.Errorf("hidden records must not count toward the cap: truncated=%v note=%q", result.TruncatedRecords, result.Note)
+	}
+	if got := uids(participantsOf(t, out)); got != "host-11 att-11 self-11" {
+		t.Errorf("the organized meeting must be drained in full, got %q", got)
+	}
+	if *result.Meetings != 1 || *result.Records != 3 {
+		t.Errorf("meetings=%d records=%d", *result.Meetings, *result.Records)
+	}
 }
 
 func TestParticipants_DedupeFalseProjectsRawRecords(t *testing.T) {

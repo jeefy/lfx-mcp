@@ -388,18 +388,27 @@ func filterParticipants(resources []*querysvc.Resource, views map[string]partici
 // views of the meetings on one page; merging across them would let one
 // meeting's record decide, or fill in, another's.
 func dedupeParticipantsPerMeeting(resources []*querysvc.Resource) []*querysvc.Resource {
-	var order []string
+	// Group by meeting, remembering where each group's records sat, then
+	// place every merged record at the position of its group's next
+	// original slot so the page keeps its sort order across meetings.
 	groups := make(map[string][]*querysvc.Resource)
-	for _, r := range resources {
+	positions := make(map[string][]int)
+	for i, r := range resources {
 		id := dataString(resourceData(r), "meeting_and_occurrence_id")
-		if _, seen := groups[id]; !seen {
-			order = append(order, id)
-		}
 		groups[id] = append(groups[id], r)
+		positions[id] = append(positions[id], i)
+	}
+	slots := make([]*querysvc.Resource, len(resources))
+	for id, group := range groups {
+		for i, merged := range dedupeParticipants(group) {
+			slots[positions[id][i]] = merged
+		}
 	}
 	out := make([]*querysvc.Resource, 0, len(resources))
-	for _, id := range order {
-		out = append(out, dedupeParticipants(groups[id])...)
+	for _, r := range slots {
+		if r != nil {
+			out = append(out, r)
+		}
 	}
 	return out
 }

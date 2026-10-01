@@ -1,6 +1,7 @@
 // Copyright The Linux Foundation and contributors.
 // SPDX-License-Identifier: MIT
 
+// Package tools provides MCP tool implementations for the LFX MCP server.
 package tools
 
 import (
@@ -90,6 +91,10 @@ func TestCountLFXResources_MeetingPeopleFieldFiltersAreRefused(t *testing.T) {
 		{"past meeting updated_by", CountLFXResourcesArgs{Type: pastMeetingResourceType, FiltersAll: []string{"updated_by.email:x@example.test"}}, false},
 		{"past meeting updated_by_list", CountLFXResourcesArgs{Type: pastMeetingResourceType, FiltersOr: []string{"updated_by_list.email:x@example.test"}}, false},
 		{"past meeting own fields", CountLFXResourcesArgs{Type: pastMeetingResourceType, FiltersAll: []string{"restricted:false"}}, true},
+		// The query service trims the field name, so padding must not slip past.
+		{"leading space", CountLFXResourcesArgs{Type: meetingResourceType, FiltersAll: []string{" created_by.email:x@example.test"}}, false},
+		{"leading tab", CountLFXResourcesArgs{Type: pastMeetingResourceType, FiltersOr: []string{"\towner.email:x@example.test"}}, false},
+		{"space before dot", CountLFXResourcesArgs{Type: meetingResourceType, FiltersAll: []string{"organizers :auth0|x"}}, false},
 	})
 }
 

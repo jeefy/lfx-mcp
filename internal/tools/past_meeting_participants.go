@@ -197,9 +197,11 @@ func pastMeetingOccurrenceID(r *querysvc.Resource) string {
 }
 
 // drainParticipants fetches pages of participants for one parent until the
-// pages run out or recordBudget records have been collected. capped reports
-// that records were left behind (more than the budget, or a token remained).
-func drainParticipants(ctx context.Context, clients *lfxv2.Clients, parent string, args SearchPastMeetingParticipantsArgs, sort string, recordBudget int, budget *requestBudget) (out []*querysvc.Resource, capped bool, err error) {
+// pages run out or recordBudget records have been collected. keep, when not
+// nil, selects the records that count (the others are dropped as each page
+// arrives, so neither the budget nor capped sees them). capped reports that
+// records were left behind (more than the budget, or a token remained).
+func drainParticipants(ctx context.Context, clients *lfxv2.Clients, parent string, args SearchPastMeetingParticipantsArgs, sort string, recordBudget int, budget *requestBudget, keep func([]*querysvc.Resource) []*querysvc.Resource) (out []*querysvc.Resource, capped bool, err error) {
 	resourceType := pastMeetingParticipantResourceType
 	tags, filtersAll := participantFilters(args)
 	var pageToken *string
@@ -227,7 +229,11 @@ func drainParticipants(ctx context.Context, clients *lfxv2.Clients, parent strin
 		if err != nil {
 			return nil, false, err
 		}
-		out = append(out, result.Resources...)
+		page := result.Resources
+		if keep != nil {
+			page = keep(page)
+		}
+		out = append(out, page...)
 		if len(out) >= recordBudget {
 			return out[:recordBudget], len(out) > recordBudget || (result.PageToken != nil && *result.PageToken != ""), nil
 		}
@@ -427,15 +433,17 @@ func handleSearchPastMeetingParticipants(ctx context.Context, req *mcp.CallToolR
 	if hasDateRange {
 		var all []*querysvc.Resource
 		drained := 0
+		// Without full view only the records the caller is shown are
+		// collected, so the record cap and its note count those alone.
+		var keep func([]*querysvc.Resource) []*querysvc.Resource
+		if !fullView {
+			keep = func(rs []*querysvc.Resource) []*querysvc.Resource { return selectParticipants(rs, views, tokenInfo) }
+		}
 		for i, p := range parents {
-			rs, capped, err := drainParticipants(ctx, clients, p, args, sort, participantMaxRecords-len(all), budget)
+			rs, capped, err := drainParticipants(ctx, clients, p, args, sort, participantMaxRecords-len(all), budget, keep)
 			if err != nil {
 				logger.ErrorContext(ctx, "QueryResources failed", "error", err)
 				return errorResult(friendlyAPIError("failed to search past meeting participants", err)), nil, nil
-			}
-			if !fullView {
-				// Only records the caller is shown count toward the cap.
-				rs = selectParticipants(rs, views, tokenInfo)
 			}
 			all = append(all, rs...)
 			drained = i + 1

@@ -1,6 +1,7 @@
 // Copyright The Linux Foundation and contributors.
 // SPDX-License-Identifier: MIT
 
+// Package main provides the LFX MCP server binary with support for stdio and HTTP transports.
 package main
 
 import (

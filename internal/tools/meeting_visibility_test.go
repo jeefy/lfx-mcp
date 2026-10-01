@@ -1,6 +1,7 @@
 // Copyright The Linux Foundation and contributors.
 // SPDX-License-Identifier: MIT
 
+// Package tools provides MCP tool implementations for the LFX MCP server.
 package tools
 
 import (
@@ -181,7 +182,9 @@ func TestSearchMeetingRegistrants_ViewsPerMeeting(t *testing.T) {
 	api := setupMeetingLookupTest(t)
 	api.GrantRelations("v1_meeting:" + meetingOrganized + "#organizer")
 	api.Respond(resourcesPath, registrantPage("next", meetingOrganized, meetingRegistered, meetingHidden))
-	api.Respond(resourcesPath, selfRegistrantLookup(meetingRegistered))
+	// A self-registration answer naming the organized meeting (outside the
+	// asked filter) must not lower the organizer's view.
+	api.Respond(resourcesPath, selfRegistrantLookup(meetingRegistered, meetingOrganized))
 
 	res, out, err := handleSearchMeetingRegistrants(context.Background(), stubCallToolRequest(), SearchMeetingRegistrantsArgs{PageSize: 10})
 	if err != nil {

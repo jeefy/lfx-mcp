@@ -280,8 +280,9 @@ rule in user terms.
   only after the records the caller is not shown are dropped, and only
   within one meeting, so a merge never carries a hidden record's fields.
 - **Count filters on people fields are refused too**: `count_lfx_resources`
-  refuses `filters_or` / `filters_all` on the people fields the search tools
-  leave out of meeting and past-meeting records.
+  refuses `filters_or` / `filters_all` on the fields of meeting and past
+  meeting records that name people (`created_by`, `owner`, `organizers`,
+  `user_id`, `updated_by`, `updated_by_list`).
 - **Refuse filters that can probe for a person** (`name`, `org_name`,
   e-mail or username tags, `filters_or` / `filters_all` on people fields)
   wherever the rule would not show the caller that list, with a tool error
