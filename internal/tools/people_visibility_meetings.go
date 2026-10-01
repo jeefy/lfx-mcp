@@ -245,14 +245,15 @@ type pastMeetingAccessDoc struct {
 // records (visibility, restricted, committees), as the caller, then one
 // access-check batch for organizer, the direct host/invitee/attendee
 // relations and membership of each of the meeting's committees. A past
-// meeting whose record the caller cannot read counts as not public.
-func participantViews(ctx context.Context, clients *lfxv2.Clients, pastMeetingIDs []string) (map[string]participantView, error) {
+// meeting whose record the caller cannot read counts as not public. Each
+// query-service page is charged to budget (nil for no budget).
+func participantViews(ctx context.Context, clients *lfxv2.Clients, pastMeetingIDs []string, budget *requestBudget) (map[string]participantView, error) {
 	views := make(map[string]participantView, len(pastMeetingIDs))
 	ids := dedupeStrings(pastMeetingIDs)
 	if len(ids) == 0 {
 		return views, nil
 	}
-	docs, err := pastMeetingAccessDocs(ctx, clients, ids)
+	docs, err := pastMeetingAccessDocs(ctx, clients, ids, budget)
 	if err != nil {
 		return nil, err
 	}
@@ -304,8 +305,8 @@ func anyCommitteeMember(relations map[string]bool, committees []string) bool {
 // caller, in chunks of peopleFilterChunk on meeting_and_occurrence_id. The
 // meeting's groups are its committees list plus the single committee_uid
 // the record also carries. An id without a record maps to the zero value
-// (not public, no committees).
-func pastMeetingAccessDocs(ctx context.Context, clients *lfxv2.Clients, ids []string) (map[string]pastMeetingAccessDoc, error) {
+// (not public, no committees). Each page is charged to budget first.
+func pastMeetingAccessDocs(ctx context.Context, clients *lfxv2.Clients, ids []string, budget *requestBudget) (map[string]pastMeetingAccessDoc, error) {
 	resourceType := pastMeetingResourceType
 	docs := make(map[string]pastMeetingAccessDoc, len(ids))
 	for _, chunk := range chunkStrings(ids, peopleFilterChunk) {
@@ -317,6 +318,9 @@ func pastMeetingAccessDocs(ctx context.Context, clients *lfxv2.Clients, ids []st
 		for pages := 0; ; pages++ {
 			if pages >= peopleLookupMaxPages {
 				return nil, errPeopleVisibilityCap
+			}
+			if err := budget.take(); err != nil {
+				return nil, err
 			}
 			result, err := clients.QuerySvc.QueryResources(ctx, &querysvc.QueryResourcesPayload{
 				Version:   "1",

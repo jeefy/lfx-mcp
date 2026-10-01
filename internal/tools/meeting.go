@@ -979,7 +979,7 @@ func handleGetPastMeetingResource(ctx context.Context, req *mcp.CallToolRequest,
 	if !HasFullView(ctx) {
 		switch resourceType {
 		case pastMeetingParticipantResourceType:
-			views, err := participantViews(ctx, clients, dataStrings(result.Resources[:1], "meeting_and_occurrence_id"))
+			views, err := participantViews(ctx, clients, dataStrings(result.Resources[:1], "meeting_and_occurrence_id"), nil)
 			if err != nil {
 				logger.ErrorContext(ctx, "participant visibility check failed", "error", err)
 				return errorResult(peopleVisibilityUnavailableMessage), nil, nil

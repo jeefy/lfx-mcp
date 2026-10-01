@@ -466,7 +466,7 @@ func peopleCountGate(ctx context.Context, clients *lfxv2.Clients, tokenInfo *aut
 			!tagsAreExactly(args.Tags, "is_attended:true") || !tagsAreExactly(args.TagsAll, "is_attended:true") {
 			return countRefusal(args.Type, allowed), nil
 		}
-		views, err := participantViews(ctx, clients, []string{id})
+		views, err := participantViews(ctx, clients, []string{id}, nil)
 		if err != nil {
 			return "", err
 		}

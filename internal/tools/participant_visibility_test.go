@@ -899,4 +899,25 @@ func TestParticipants_NonFullViewPathsChargeTheRequestBudget(t *testing.T) {
 			t.Errorf("neither the docs lookup nor a relation check may run once the budget is spent, got %d extra calls", n)
 		}
 	})
+	t.Run("every page of a view lookup is charged", func(t *testing.T) {
+		// The query service may return empty pages with a continuation
+		// token; each one is a request the budget must count.
+		lower(t, 3) // the range page and two lookup pages
+		api := setupParticipantTest(t)
+		api.GrantRelations()
+		api.Respond(resourcesPath, page([]string{pastMeetingDoc(pastPublic)}, ""))
+		for i := 0; i < peopleLookupMaxPages; i++ {
+			api.Respond(resourcesPath, page(nil, "more"))
+		}
+		res, _, _ := handleSearchPastMeetingParticipants(context.Background(), stubCallToolRequest(), SearchPastMeetingParticipantsArgs{ProjectUID: "P1", DateFrom: "2026-06-01"})
+		if !res.IsError || !strings.Contains(allResultText(t, res), "count_only") {
+			t.Fatalf("expected the request-budget error, got %s", allResultText(t, res))
+		}
+		if n := len(api.RequestsTo(resourcesPath)); n != participantMaxRequests {
+			t.Errorf("must stop at exactly %d query-service requests, made %d", participantMaxRequests, n)
+		}
+		if n := len(api.RequestsTo(accessCheckPath)); n != 0 {
+			t.Errorf("no relation check may run once the budget is spent, got %d", n)
+		}
+	})
 }

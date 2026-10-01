@@ -7,6 +7,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -38,17 +39,28 @@ var errDrainPageCap = fmt.Errorf("paging exceeded the %d-page cap; narrow the qu
 // variable so tests can lower it to reach the cap.
 var participantMaxRequests = 2000
 
-// errRequestBudget returns the error for a date-range call that exhausts
-// participantMaxRequests, built when it happens so the figure is current.
-func errRequestBudget() error {
-	return fmt.Errorf("the date range needed more than %d query-service requests; narrow the range, add attended_only or org_name, or use count_only", participantMaxRequests)
+// requestBudgetError is the error for a date-range call that exhausts
+// participantMaxRequests; its text is built when it happens so the figure is
+// current.
+type requestBudgetError struct{}
+
+func (requestBudgetError) Error() string {
+	return fmt.Sprintf("the date range needed more than %d query-service requests; narrow the range, add attended_only or org_name, or use count_only", participantMaxRequests)
 }
 
-// requestBudget counts upstream calls across the steps of one tool call.
+// errRequestBudget returns the error for a date-range call that exhausts
+// participantMaxRequests.
+func errRequestBudget() error { return requestBudgetError{} }
+
+// requestBudget counts upstream calls across the steps of one tool call. A
+// nil budget is unlimited, for the lookups that run outside the date range.
 type requestBudget struct{ remaining int }
 
 // take consumes one request; it returns errRequestBudget when none are left.
 func (b *requestBudget) take() error {
+	if b == nil {
+		return nil
+	}
 	if b.remaining <= 0 {
 		return errRequestBudget()
 	}
@@ -370,20 +382,18 @@ func handleSearchPastMeetingParticipants(ctx context.Context, req *mcp.CallToolR
 
 	// Without full view, decide the view of every past meeting in scope
 	// before any participant data is read or counted; the scope is always
-	// one past meeting or the resolved range here. The lookups are charged
-	// to the request budget by chunk.
+	// one past meeting or the resolved range here. Every page of the
+	// past-meeting lookup is charged to the request budget.
 	var views map[string]participantView
 	if !fullView {
 		scope := ids
 		if args.PastMeetingID != "" {
 			scope = []string{args.PastMeetingID}
 		}
-		for range chunkStrings(scope, peopleFilterChunk) {
-			if err := budget.take(); err != nil {
-				return errorResult(friendlyAPIError("failed to check past meeting visibility", err)), nil, nil
-			}
+		views, err = participantViews(ctx, clients, scope, budget)
+		if errors.As(err, &requestBudgetError{}) {
+			return errorResult(friendlyAPIError("failed to check past meeting visibility", err)), nil, nil
 		}
-		views, err = participantViews(ctx, clients, scope)
 		if err != nil {
 			logger.ErrorContext(ctx, "participant visibility check failed", "error", err)
 			return errorResult(peopleVisibilityUnavailableMessage), nil, nil
