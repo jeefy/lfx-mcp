@@ -13,6 +13,45 @@ as a member or manager of a group (a committee, working group, TSC or board), a 
 or foundation administrator, or an organization admin. Through the MCP you see and do what LFX Self Serve lets
 you see and do.
 
+## What you can see and do
+
+You sign in to the MCP with your LFX account, the same one you use for LFX Self Serve, and you have the same
+access. The MCP works as you, with the same permission checks as LFX Self Serve, so it can only see and change
+what your LFX account is allowed to. Approving your request only lets you sign in; it does not give you access to
+any project. Your access comes from your place in LFX, linked to your LFX account: your roles in projects, groups
+and organizations, the meetings you are invited to or attend, and the mailing lists you subscribe to. These are
+managed in LFX Self Serve, as they are today.
+
+You can:
+
+- find projects, and the groups, meetings and mailing lists you take part in or have a role on;
+- look up group members, meeting registrants and attendees, under the same access rules as LFX Self Serve;
+- get past meeting summaries, and links to recordings and transcripts, when the meeting shares them with you, or
+  you organize the meeting or have a manager or viewer role on its group or project;
+- get counts and overviews across the projects, groups and meetings you can see;
+- see what other projects, groups and meetings have made public, including those in other foundations, as anyone
+  signed in to LFX Self Serve can;
+- if you administer a group, manage the group and its members; if you manage a project, also create groups in it
+  and manage any of its groups;
+- if you manage a project, send emails from its templates and give people roles on its Discord server, where the
+  project has these set up (these two are MCP features that LFX Self Serve does not have);
+- if you have a role at an organization or are one of its key contacts, see its memberships, key contacts and
+  group seats; if you have a manager or viewer role on a project, see the memberships and key contacts for it.
+
+You cannot:
+
+- see private groups, meetings or mailing lists unless you take part in them or have a manager or viewer role on
+  the project or group they belong to;
+- see a meeting's recording, transcript or summary unless the meeting's settings share it with you, or you
+  organize the meeting or have a manager or viewer role on its group or project;
+- see an organization's memberships, key contacts or group seats unless you have a role at that organization, are
+  one of its key contacts, or have a manager or viewer role on the project the membership is for;
+- access LFX Insights or other Linux Foundation analytics and reporting data;
+- make changes your LFX roles do not allow.
+
+If you sign in with a Linux Foundation staff account, you will also see internal reporting and data tools. They
+are not available to non-staff community accounts.
+
 ## How to request
 
 Open a new issue in this repository with the
