@@ -298,6 +298,32 @@ func TestParticipants_HiddenRecordsNeverMergeIntoShownOnes(t *testing.T) {
 			t.Error("the hidden meeting's address must not appear")
 		}
 	})
+	t.Run("a host of a shown meeting stays a host when also an attendee of a hidden one", func(t *testing.T) {
+		api := setupParticipantTest(t)
+		api.GrantRelations()
+		rangeOver(api, pastPublic, pastHidden,
+			[]string{participantDocFor("a-h", pastPublic, "h@example.test", "Hal", "H", "hal-user", true, true)},
+			[]string{participantDocFor("b-h", pastHidden, "h@example.test", "Hal", "H", "hal-user", false, true)})
+		res, out, _ := handleSearchPastMeetingParticipants(context.Background(), stubCallToolRequest(), rangeArgs)
+		got := participantsOf(t, out)
+		if uids(got) != "a-h" || got[0]["host"] != true || got[0]["email"] != nil {
+			t.Fatalf("the shown host, reduced, and nothing else: %v", got)
+		}
+		if strings.Contains(allResultText(t, res), "h@example.test") {
+			t.Error("a host's address is not shown to a full-access caller")
+		}
+	})
+	t.Run("same username in an organized meeting and an own-only one", func(t *testing.T) {
+		api := setupParticipantTest(t)
+		api.GrantRelations("v1_past_meeting:" + pastOrganized + "#organizer")
+		rangeOver(api, pastOrganized, pastHidden,
+			[]string{participantDocFor("a-v", pastOrganized, "v@example.test", "Val", "V", "val-user", false, false)},
+			[]string{participantDocFor("b-v", pastHidden, "v@example.test", "Val", "V", "val-user", true, true)})
+		_, out, _ := handleSearchPastMeetingParticipants(context.Background(), stubCallToolRequest(), rangeArgs)
+		if got := participantsOf(t, out); uids(got) != "a-v" || got[0]["host"] != false || got[0]["is_attended"] != false {
+			t.Fatalf("the organized meeting's record as stored, the hidden one gone: %v", got)
+		}
+	})
 	t.Run("a name-only stranger does not merge into the caller's own record", func(t *testing.T) {
 		api := setupParticipantTest(t)
 		api.GrantRelations()
@@ -752,6 +778,23 @@ func TestParticipants_QueriesAreNarrowedToWhatIsShown(t *testing.T) {
 			t.Errorf("the empty page keeps the standard warning: %v", result.Warnings)
 		}
 	})
+	t.Run("date range, no identity: own-only meetings are not read at all", func(t *testing.T) {
+		api := setupParticipantTest(t)
+		api.GrantRelations("v1_past_meeting:" + pastOrganized + "#organizer")
+		api.Respond(resourcesPath, page([]string{pastMeetingDoc(pastOrganized), pastMeetingDoc(pastHidden)}, ""))
+		api.Respond(resourcesPath, pastDocs(pastOrganized, pastHidden))
+		api.Respond(resourcesPath, page(meetingRoster(pastOrganized), ""))
+		req := stubCallToolRequest()
+		delete(req.Extra.TokenInfo.Extra, "username")
+		delete(req.Extra.TokenInfo.Extra, ClaimEmail)
+		_, out, _ := handleSearchPastMeetingParticipants(context.Background(), req, SearchPastMeetingParticipantsArgs{ProjectUID: "P1", DateFrom: "2026-06-01"})
+		if n := len(api.RequestsTo(resourcesPath)); n != 3 {
+			t.Errorf("expected the range, the docs and one drain, got %d queries", n)
+		}
+		if result := out.(participantSearchResult); *result.Meetings != 1 || *result.Records != 3 {
+			t.Errorf("meetings=%d records=%d", *result.Meetings, *result.Records)
+		}
+	})
 	t.Run("date range: hidden meetings are read narrowed, organized ones in full", func(t *testing.T) {
 		api := setupParticipantTest(t)
 		api.GrantRelations("v1_past_meeting:" + pastOrganized + "#organizer")
@@ -767,6 +810,47 @@ func TestParticipants_QueriesAreNarrowedToWhatIsShown(t *testing.T) {
 		result := out.(participantSearchResult)
 		if uids(participantsOf(t, out)) != "host-11 att-11 self-11 self-55" || *result.Meetings != 2 || *result.Records != 4 || *result.People != 4 {
 			t.Errorf("records=%q meetings=%d records=%d people=%d", uids(participantsOf(t, out)), *result.Meetings, *result.Records, *result.People)
+		}
+	})
+}
+
+func TestParticipants_NonFullViewPathsChargeTheRequestBudget(t *testing.T) {
+	// The view lookups and the per-meeting counts are charged to the same
+	// request budget as the drains, so neither can fan out past it.
+	lower := func(t *testing.T, n int) {
+		t.Helper()
+		prev := participantMaxRequests
+		participantMaxRequests = n
+		t.Cleanup(func() { participantMaxRequests = prev })
+	}
+	t.Run("count loop stops at the budget", func(t *testing.T) {
+		lower(t, 2) // the range page and one view chunk, then nothing for the first count
+		api := setupParticipantTest(t)
+		api.GrantRelations("v1_past_meeting:"+pastOrganized+"#organizer", "v1_past_meeting:"+pastPublic+"#organizer")
+		api.Respond(resourcesPath, page([]string{pastMeetingDoc(pastOrganized), pastMeetingDoc(pastPublic)}, ""))
+		api.Respond(resourcesPath, pastDocs(pastOrganized, pastPublic))
+		api.Respond(countPath, `{"count": 5, "has_more": false}`)
+		api.Respond(countPath, `{"count": 7, "has_more": false}`)
+		res, _, _ := handleSearchPastMeetingParticipants(context.Background(), stubCallToolRequest(), SearchPastMeetingParticipantsArgs{ProjectUID: "P1", DateFrom: "2026-06-01", CountOnly: true})
+		if !res.IsError || !strings.Contains(allResultText(t, res), "count_only") {
+			t.Fatalf("expected the request-budget error, got %s", allResultText(t, res))
+		}
+		if n := len(api.RequestsTo(countPath)); n != 0 {
+			t.Errorf("no count may run once the budget is spent, got %d", n)
+		}
+	})
+	t.Run("view lookups are charged", func(t *testing.T) {
+		lower(t, 1) // the range page; no view chunk left
+		api := setupParticipantTest(t)
+		api.GrantRelations()
+		api.Respond(resourcesPath, page([]string{pastMeetingDoc(pastPublic)}, ""))
+		api.Respond(resourcesPath, pastDocs(pastPublic))
+		res, _, _ := handleSearchPastMeetingParticipants(context.Background(), stubCallToolRequest(), SearchPastMeetingParticipantsArgs{ProjectUID: "P1", DateFrom: "2026-06-01"})
+		if !res.IsError || !strings.Contains(allResultText(t, res), "count_only") {
+			t.Fatalf("expected the request-budget error, got %s", allResultText(t, res))
+		}
+		if n := len(api.RequestsTo(accessCheckPath)) + len(api.RequestsTo(resourcesPath)) - 1; n != 0 {
+			t.Errorf("neither the docs lookup nor a relation check may run once the budget is spent, got %d extra calls", n)
 		}
 	})
 }

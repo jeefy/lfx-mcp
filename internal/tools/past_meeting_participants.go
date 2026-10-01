@@ -34,8 +34,9 @@ var errDrainPageCap = fmt.Errorf("paging exceeded the %d-page cap; narrow the qu
 
 // participantMaxRequests caps the query-service calls one tool invocation may
 // make on the date-range path (meeting pages + participant pages together).
-// Without it, max_meetings x per-meeting page cap allows 40k calls.
-const participantMaxRequests = 2000
+// Without it, max_meetings x per-meeting page cap allows 40k calls. A
+// variable so tests can lower it to reach the cap.
+var participantMaxRequests = 2000
 
 // errRequestBudget is returned when a date-range call exhausts participantMaxRequests.
 var errRequestBudget = fmt.Errorf("the date range needed more than %d query-service requests; narrow the range, add attended_only or org_name, or use count_only", participantMaxRequests)
@@ -77,7 +78,7 @@ const participantCountRecordsNote = " This counts participant records, not disti
 // who names no single past meeting and no date range: LFX Self Serve has no
 // cross-meeting participant list for anyone but a meeting's organizers, and a
 // page over a whole project or group would only be read to be emptied.
-const participantScopeRefusal = "Error: participants are available per past meeting as LFX Self Serve shows them to you: set past_meeting_id, or project_uid/committee_uid with a date range."
+const participantScopeRefusal = "Error: participants are available per past meeting as LFX Self Serve shows them to you: set past_meeting_id, or a project or group scope with a date range."
 
 // participantFilterRefusal is the tool error for a name or org_name filter
 // from a caller without full view outside the one form LFX Self Serve offers
@@ -286,7 +287,7 @@ func handleSearchPastMeetingParticipants(ctx context.Context, req *mcp.CallToolR
 		return errorResult("Error: date_from/date_to cannot be combined with past_meeting_id; a past meeting already has one start time"), nil, nil
 	}
 	if hasDateRange && args.CommitteeUID == "" && args.ProjectUID == "" {
-		return errorResult("Error: date_from/date_to require project_uid or committee_uid; without a scope the range would cover only the first past meetings visible to you across all of LFX"), nil, nil
+		return errorResult("Error: date_from/date_to require project_uid or the group's (committee) UID; without a scope the range would cover only the first past meetings visible to you across all of LFX"), nil, nil
 	}
 	if hasDateRange && args.PageToken != "" {
 		return errorResult("Error: page_token cannot be used with a date range; the tool drains every matching meeting itself"), nil, nil

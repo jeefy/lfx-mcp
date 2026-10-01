@@ -347,7 +347,14 @@ func assertGoldenOutput(t *testing.T, name string, res *mcp.CallToolResult, out 
 	if err != nil {
 		t.Fatalf("golden missing: %v", err)
 	}
-	gotText := res.Content[len(res.Content)-1].(*mcp.TextContent).Text
+	if len(res.Content) != 1 {
+		t.Fatalf("expected one content block, got %d", len(res.Content))
+	}
+	text, ok := res.Content[0].(*mcp.TextContent)
+	if !ok {
+		t.Fatalf("expected a text block, got %T", res.Content[0])
+	}
+	gotText := text.Text
 	if gotText != string(wantText) {
 		t.Errorf("full-view text differs from origin/main's output:\n--- want\n%s\n--- got\n%s", wantText, gotText)
 	}
@@ -368,31 +375,6 @@ func assertGoldenOutput(t *testing.T, name string, res *mcp.CallToolResult, out 
 	}
 }
 
-// peopleToolRegistrations are the Register* functions of every tool whose
-// results carry people data, in both terminology modes.
-var peopleToolRegistrations = []func(*mcp.Server){
-	func(s *mcp.Server) { RegisterSearchCommitteeMembers(s, false) },
-	func(s *mcp.Server) { RegisterSearchCommitteeMembers(s, true) },
-	func(s *mcp.Server) { RegisterGetCommitteeMember(s, false) },
-	func(s *mcp.Server) { RegisterGetCommitteeMember(s, true) },
-	func(s *mcp.Server) { RegisterGetCommittee(s, false) },
-	func(s *mcp.Server) { RegisterGetCommittee(s, true) },
-	func(s *mcp.Server) { RegisterSearchMeetingRegistrants(s, false) },
-	func(s *mcp.Server) { RegisterSearchMeetingRegistrants(s, true) },
-	RegisterGetMeetingRegistrant,
-	func(s *mcp.Server) { RegisterSearchMeetings(s, false) },
-	func(s *mcp.Server) { RegisterSearchMeetings(s, true) },
-	RegisterGetMeeting,
-	func(s *mcp.Server) { RegisterSearchPastMeetingParticipants(s, false) },
-	func(s *mcp.Server) { RegisterSearchPastMeetingParticipants(s, true) },
-	RegisterGetPastMeetingParticipant,
-	func(s *mcp.Server) { RegisterSearchPastMeetings(s, false) },
-	func(s *mcp.Server) { RegisterSearchPastMeetings(s, true) },
-	RegisterGetPastMeeting,
-	RegisterSearchPastMeetingSummaries,
-	RegisterGetPastMeetingSummary,
-}
-
 // groupModePeopleToolNames maps the group-mode names of people tools to the
 // committee-mode names the registry uses.
 var groupModePeopleToolNames = map[string]string{
@@ -401,34 +383,56 @@ var groupModePeopleToolNames = map[string]string{
 	"get_group":            "get_committee",
 }
 
-// TestPeopleTools_RegistryIsComplete ties the registry to the registered
-// people tools: every tool one of peopleToolRegistrations registers, in
-// either mode, has a registry entry, and every entry names a registered
-// tool. count_lfx_resources is gated separately (peopleCountGate) and has
-// its own tests.
+// TestPeopleTools_RegistryIsComplete ties the registry to PeopleToolNames,
+// the exported list cmd/lfx-mcp-server checks newServer's registrations
+// against: every name there has a registry entry and every entry is named
+// there, so a people tool cannot be registered without the three walks.
+// count_lfx_resources is gated separately (peopleCountGate) and has its own
+// tests.
 func TestPeopleTools_RegistryIsComplete(t *testing.T) {
-	registered := map[string]bool{}
-	for _, register := range peopleToolRegistrations {
-		for _, tool := range registeredTools(t, register) {
-			name := tool.Name
-			if canonical, ok := groupModePeopleToolNames[name]; ok {
-				name = canonical
-			}
-			registered[name] = true
+	named := map[string]bool{}
+	for _, name := range PeopleToolNames {
+		if canonical, ok := groupModePeopleToolNames[name]; ok {
+			name = canonical
 		}
+		named[name] = true
 	}
 	inRegistry := map[string]bool{}
 	for _, tc := range peopleTools {
 		inRegistry[tc.name] = true
-		if !registered[tc.name] {
-			t.Errorf("registry entry %q is not a registered people tool", tc.name)
+		if !named[tc.name] {
+			t.Errorf("registry entry %q is not in PeopleToolNames", tc.name)
 		}
 	}
-	for name := range registered {
+	for name := range named {
 		if !inRegistry[name] {
 			t.Errorf("people tool %q has no registry entry; add it to peopleTools", name)
 		}
 	}
+	// Each name registers under its own mode.
+	for _, name := range PeopleToolNames {
+		_, groups := groupModePeopleToolNames[name]
+		if findRegisteredTool(t, name, func(s *mcp.Server) { registerPeopleTools(s, groups) }) == nil {
+			t.Errorf("%q is in PeopleToolNames but no people Register* function registers it (groups=%v)", name, groups)
+		}
+	}
+}
+
+// registerPeopleTools registers every people tool in one terminology mode.
+func registerPeopleTools(s *mcp.Server, groups bool) {
+	RegisterSearchCommitteeMembers(s, groups)
+	RegisterGetCommitteeMember(s, groups)
+	RegisterGetCommittee(s, groups)
+	RegisterSearchMeetingRegistrants(s, groups)
+	RegisterGetMeetingRegistrant(s)
+	RegisterSearchMeetings(s, groups)
+	RegisterGetMeeting(s)
+	RegisterSearchPastMeetingParticipants(s, groups)
+	RegisterGetPastMeetingParticipant(s)
+	RegisterSearchPastMeetings(s, groups)
+	RegisterGetPastMeeting(s)
+	RegisterSearchPastMeetingSummaries(s)
+	RegisterGetPastMeetingSummary(s)
 }
 
 // predicateRequests counts the access-check calls. Together with the queue

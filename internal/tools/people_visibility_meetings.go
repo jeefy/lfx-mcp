@@ -355,7 +355,10 @@ func projectParticipant(data map[string]any, view participantView, tokenInfo *au
 // whether the query is worth sending at all. An organizer reads the meeting
 // unnarrowed; full access reads the hosts and the caller's own records; own
 // only reads the caller's own records; a caller with neither username nor
-// e-mail can be shown nothing of a meeting they do not organize.
+// e-mail can be shown nothing of a meeting they do not organize. The e-mail
+// terms match the stored address exactly, as the claim and lowercased; a
+// record stored under a third casing is not read (isOwnRecord would have
+// matched it case-insensitively), which only narrows the caller's own view.
 func participantNarrowing(view participantView, tokenInfo *auth.TokenInfo) (narrow []string, readable bool) {
 	if view == participantOrganizer {
 		return nil, true

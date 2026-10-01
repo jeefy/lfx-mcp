@@ -437,8 +437,8 @@ func TestParticipants_ArgumentGuards(t *testing.T) {
 		want string
 	}{
 		{SearchPastMeetingParticipantsArgs{PastMeetingID: "m", DateFrom: "2026-01-01"}, "past_meeting_id"},
-		{SearchPastMeetingParticipantsArgs{DateFrom: "2026-01-01"}, "require project_uid or committee_uid"},
-		{SearchPastMeetingParticipantsArgs{Name: "Ann", DateTo: "2026-01-31"}, "require project_uid or committee_uid"},
+		{SearchPastMeetingParticipantsArgs{DateFrom: "2026-01-01"}, "require project_uid or the group"},
+		{SearchPastMeetingParticipantsArgs{Name: "Ann", DateTo: "2026-01-31"}, "require project_uid or the group"},
 		{SearchPastMeetingParticipantsArgs{ProjectUID: "p", DateFrom: "2026-01-01", PageToken: "x"}, "page_token"},
 		{SearchPastMeetingParticipantsArgs{ProjectUID: "p", DateFrom: "2026-01-01", MaxMeetings: 201}, "max_meetings"},
 	} {
@@ -485,10 +485,13 @@ func TestMeetingRegistrantsDescriptionMatchesHandler(t *testing.T) {
 }
 
 func TestParticipantsDescriptionAdvertisesNewFilters(t *testing.T) {
-	tool := listRegisteredTool(t, "search_past_meeting_participants", func(s *mcp.Server) { RegisterSearchPastMeetingParticipants(s, false) })
-	if n := len(tool.Description); n > 1000 {
-		t.Errorf("description is %d bytes, keep it under 1000", n)
+	for _, groups := range []bool{false, true} {
+		tool := listRegisteredTool(t, "search_past_meeting_participants", func(s *mcp.Server) { RegisterSearchPastMeetingParticipants(s, groups) })
+		if n := len(tool.Description); n > 1000 {
+			t.Errorf("groups=%v: description is %d bytes, keep it under 1000", groups, n)
+		}
 	}
+	tool := listRegisteredTool(t, "search_past_meeting_participants", func(s *mcp.Server) { RegisterSearchPastMeetingParticipants(s, false) })
 	for _, want := range []string{"committee UID", "date_from", "attended_only", "org_name", "count_only", "dedupe", "visible to the caller", "meetings and participant records visible to the caller"} {
 		if !strings.Contains(tool.Description, want) {
 			t.Errorf("description missing %q", want)

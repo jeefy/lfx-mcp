@@ -304,11 +304,16 @@ rule in user terms.
 Adding a people tool: decide the view per parent object with one of the
 `*Views` predicates (or add one next to them) before the query, narrow the
 query to what the view shows, project each record with the matching
-`project*` function after it, short-circuit on `HasFullView(ctx)`, and add
-the tool to the registry the people-tool tests walk (`peopleTools` in
-`internal/tools/people_tools_registry_test.go`; `TestPeopleTools_RegistryIsComplete`
-fails until every registered people tool has an entry). The full-view walk
-compares each tool's output byte for byte with goldens in
+`project*` function after it, short-circuit on `HasFullView(ctx)`, add its
+name (both terminology modes) to `tools.PeopleToolNames`, and add the tool
+to the registry the people-tool tests walk (`peopleTools` in
+`internal/tools/people_tools_registry_test.go`). Every tool `newServer()`
+registers must be either in `PeopleToolNames` or declared with its reason in
+`nonPeopleTools` (`cmd/lfx-mcp-server/main_test.go`):
+`TestNewServer_EveryToolDecidesOnPeopleData` fails until it is, and
+`TestPeopleTools_RegistryIsComplete` fails until every name in
+`PeopleToolNames` has a registry entry. The full-view walk compares each
+tool's output byte for byte with goldens in
 `internal/tools/testdata/people_full_view/`, generated from the handlers at
 `origin/main` before this rule existed; regenerate a golden only from a
 checkout that predates the people rules, never from the branch under test.

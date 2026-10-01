@@ -103,6 +103,24 @@ func TestCountLFXResources_MeetingFiltersAreAllowlisted(t *testing.T) {
 		{"date_field on a people path", CountLFXResourcesArgs{Type: meetingResourceType, DateField: "updated_by_list.timestamp", DateFrom: "2026-01-01"}, false},
 		{"date_field on occurrences", CountLFXResourcesArgs{Type: pastMeetingResourceType, DateField: "sessions.start_time", DateTo: "2026-12-31"}, false},
 	})
+	// Every allowlisted field and date field is accepted, on both types, and
+	// the refusal names all of them.
+	var accepting []countArgsCase
+	for _, resourceType := range []string{meetingResourceType, pastMeetingResourceType} {
+		for _, field := range meetingCountFilterFields {
+			accepting = append(accepting, countArgsCase{resourceType + " accepts " + field, CountLFXResourcesArgs{Type: resourceType, FiltersAll: []string{field + ":x"}, FiltersOr: []string{field + ":y"}}, true})
+		}
+		for _, field := range meetingCountDateFields {
+			accepting = append(accepting, countArgsCase{resourceType + " ranges on " + field, CountLFXResourcesArgs{Type: resourceType, DateField: field, DateFrom: "2026-01-01"}, true})
+		}
+	}
+	runCountGateCases(t, api, accepting)
+	res, _, _ := handleCountLFXResources(context.Background(), stubCallToolRequest(), CountLFXResourcesArgs{Type: meetingResourceType, FiltersAll: []string{"owner.email:x@example.test"}})
+	for _, field := range append(append([]string{}, meetingCountFilterFields...), meetingCountDateFields...) {
+		if !strings.Contains(allResultText(t, res), field) {
+			t.Errorf("the refusal must name the allowed field %q: %s", field, allResultText(t, res))
+		}
+	}
 	if n := len(api.RequestsTo(accessCheckPath)); n != 0 {
 		t.Errorf("meeting counts need no relation check, got %d", n)
 	}

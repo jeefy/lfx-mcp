@@ -328,7 +328,7 @@ staff, machine and API-key callers get the records as the services return them.
 |------------------------------|-------------------------------------------------------------------|
 | `search_meetings`            | Search meetings by project, committee, date; upcoming occurrences |
 | `get_meeting`                | Get a meeting by UID                                              |
-| `search_meeting_registrants` | Search meeting registrants; filter by meeting, committee, project |
+| `search_meeting_registrants` | Search meeting registrants; filter by meeting, committee, project (non-staff callers: per meeting) |
 | `get_meeting_registrant`     | Get a meeting registrant by UID                                   |
 
 ### Past Meeting Data
@@ -337,7 +337,7 @@ staff, machine and API-key callers get the records as the services return them.
 |------------------------------------|-------------------------------------------------------------------------|
 | `search_past_meetings`             | Search past meetings; filter by project, committee, date range          |
 | `get_past_meeting`                 | Get a past meeting by UID                                               |
-| `search_past_meeting_participants` | Search past meeting participants; filter by meeting, committee, project, date range, attended_only or organisation name; count_only returns record counts; people are de-duplicated by identity like LFX Self Serve (dedupe=false returns raw records) |
+| `search_past_meeting_participants` | Search past meeting participants; filter by meeting, committee, project, date range (non-staff callers: per past meeting, or a date range), attended_only or organisation name; count_only returns record counts; people are de-duplicated by identity like LFX Self Serve (dedupe=false returns raw records) |
 | `get_past_meeting_participant`     | Get a past meeting participant by UID                                   |
 | `search_past_meeting_summaries`    | Search past meeting summaries; filter by meeting, project, name         |
 | `get_past_meeting_summary`         | Get a past meeting summary by UID                                       |

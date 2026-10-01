@@ -402,6 +402,22 @@ var meetingCountFilterFields = []string{
 // range v1_meeting and v1_past_meeting counts over.
 var meetingCountDateFields = []string{"start_time", "end_time", "created_at", "updated_at"}
 
+// PeopleToolNames are the tools whose results follow the people rule above,
+// under both terminology modes. The tests in internal/tools walk every name
+// (people_tools_registry_test.go) and cmd/lfx-mcp-server checks that every
+// tool newServer registers is either here or declared not to return people
+// data, so a new tool cannot ship without that decision.
+var PeopleToolNames = []string{
+	"search_committee_members", "search_group_members",
+	"get_committee_member", "get_group_member",
+	"get_committee", "get_group",
+	"search_meeting_registrants", "get_meeting_registrant",
+	"search_meetings", "get_meeting",
+	"search_past_meeting_participants", "get_past_meeting_participant",
+	"search_past_meetings", "get_past_meeting",
+	"search_past_meeting_summaries", "get_past_meeting_summary",
+}
+
 // countRefusal is the tool error refusing a count of a people type for a
 // caller without full view; allowed names the accepted form.
 func countRefusal(resourceType, allowed string) string {

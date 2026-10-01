@@ -410,6 +410,14 @@ func TestSearchCommitteeMembers_RefusesPersonFiltersWithoutShownList(t *testing.
 			t.Error("the search must not run when the filter is refused")
 		}
 	})
+	t.Run("chairs-only group: organization_name is refused before the search", func(t *testing.T) {
+		api := setupCommitteeTest(t)
+		api.GrantRelations()
+		_, _, err := handleSearchCommitteeMembers(context.Background(), stubCallToolRequest(), SearchCommitteeMembersArgs{CommitteeUID: committeeViewerUID, OrganizationName: "Example Org"})
+		if err == nil || !strings.Contains(err.Error(), "member list") || len(api.RequestsTo(resourcesPath)) != 0 {
+			t.Fatalf("expected the refusal and no member query, got %v (%d queries)", err, len(api.RequestsTo(resourcesPath)))
+		}
+	})
 	t.Run("roster-shown group: organization_name passes, name does not", func(t *testing.T) {
 		// An auditor who is a member of a basic_profile group sees the
 		// Members tab, which shows organisations but not usernames; name
