@@ -290,7 +290,7 @@ func handleSearchPastMeetingParticipants(ctx context.Context, req *mcp.CallToolR
 		return errorResult("Error: date_from/date_to cannot be combined with past_meeting_id; a past meeting already has one start time"), nil, nil
 	}
 	if hasDateRange && args.CommitteeUID == "" && args.ProjectUID == "" {
-		return errorResult("Error: date_from/date_to require project_uid or the group's (committee) UID; without a scope the range would cover only the first past meetings visible to you across all of LFX"), nil, nil
+		return errorResult("Error: date_from/date_to require project_uid or committee_uid; without a scope the range would cover only the first past meetings visible to you across all of LFX"), nil, nil
 	}
 	if hasDateRange && args.PageToken != "" {
 		return errorResult("Error: page_token cannot be used with a date range; the tool drains every matching meeting itself"), nil, nil
@@ -298,6 +298,9 @@ func handleSearchPastMeetingParticipants(ctx context.Context, req *mcp.CallToolR
 	maxMeetings := args.MaxMeetings
 	if maxMeetings <= 0 {
 		maxMeetings = participantDefaultMaxMeetings
+	}
+	if hasDateRange && maxMeetings > participantHardMaxMeetings {
+		return errorResult(fmt.Sprintf("Error: max_meetings must be at most %d", participantHardMaxMeetings)), nil, nil
 	}
 
 	var tokenInfo *auth.TokenInfo
@@ -333,9 +336,6 @@ func handleSearchPastMeetingParticipants(ctx context.Context, req *mcp.CallToolR
 		return errorResult(participantScopeRefusal), nil, nil
 	}
 	hasPersonFilter := args.Name != "" || args.OrgName != ""
-	if hasDateRange && maxMeetings > participantHardMaxMeetings {
-		return errorResult(fmt.Sprintf("Error: max_meetings must be at most %d", participantHardMaxMeetings)), nil, nil
-	}
 
 	logger.InfoContext(ctx, "searching past meeting participants",
 		"past_meeting_id", args.PastMeetingID,
