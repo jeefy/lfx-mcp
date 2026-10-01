@@ -321,6 +321,7 @@ func TestSearchCommitteeMembers_SettingsForbiddenMeansNotShown(t *testing.T) {
 func TestSearchCommitteeMembers_ProjectWideMixesViewsPerGroup(t *testing.T) {
 	api := setupCommitteeTest(t)
 	api.GrantRelations("committee:" + committeeWriterUID + "#writer")
+	api.Respond(resourcesPath, projectGroupsPage(committeeWriterUID, committeeViewerUID)) // the project's groups, before the search
 	api.Respond(resourcesPath, rosterPage(committeeWriterUID, committeeViewerUID))
 
 	_, out, err := handleSearchCommitteeMembers(context.Background(), stubCallToolRequest(), SearchCommitteeMembersArgs{ProjectUID: "P1"})
@@ -346,6 +347,90 @@ func TestSearchCommitteeMembers_ProjectWideMixesViewsPerGroup(t *testing.T) {
 	if bodies := api.AccessCheckBodies(); len(bodies) != 1 || len(bodies[0]) != 4 {
 		t.Errorf("both groups must be checked in one batch, got %v", bodies)
 	}
+	reqs := api.RequestsTo(resourcesPath)
+	if len(reqs) != 2 || reqs[0].Query.Get("type") != "committee" || reqs[0].Query.Get("parent") != "project:P1" {
+		t.Fatalf("the project's groups are read first, as the caller: %+v", reqs)
+	}
+	assertExchangedAuth(t, reqs[0])
+	// The search reads the writer group's members and every group's chairs,
+	// so a page never spans the members withheld.
+	want := "role.name:Chair,role.name:Vice Chair,committee_uid:" + committeeWriterUID
+	if got := strings.Join(reqs[1].Query["filters_or"], ","); got != want {
+		t.Errorf("filters_or = %q, want %q", got, want)
+	}
+}
+
+// projectGroupsPage is the committee records of project P1.
+func projectGroupsPage(committeeUIDs ...string) string {
+	docs := make([]string, 0, len(committeeUIDs))
+	for _, uid := range committeeUIDs {
+		docs = append(docs, committeeDoc(uid, "Group "+uid[:4], "Technical", "P1"))
+	}
+	return page(docs, "")
+}
+
+func TestSearchCommitteeMembers_ProjectNarrowingAndCoverageNote(t *testing.T) {
+	t.Run("a page the view would empty is never read", func(t *testing.T) {
+		api := setupCommitteeTest(t)
+		api.GrantRelations()
+		api.Respond(resourcesPath, projectGroupsPage(committeeViewerUID))
+		api.Respond(resourcesPath, page(nil, ""))
+		_, out, err := handleSearchCommitteeMembers(context.Background(), stubCallToolRequest(), SearchCommitteeMembersArgs{ProjectUID: "P1"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := strings.Join(api.RequestsTo(resourcesPath)[1].Query["filters_or"], ","); got != "role.name:Chair,role.name:Vice Chair" {
+			t.Errorf("a project whose lists are not shown is read as its chairs, got %q", got)
+		}
+		// No group has a chair: the warning is the generic one, never the
+		// roster-coverage note blaming filters the caller did not pass.
+		if len(out.Warnings) != 1 || strings.Contains(out.Warnings[0], "name is a typeahead") {
+			t.Errorf("expected the generic warning, got %v", out.Warnings)
+		}
+		if n := len(api.RequestsTo(countPath)); n != 0 {
+			t.Errorf("no coverage count for a narrowed page, got %d", n)
+		}
+	})
+	t.Run("no visible group keeps the coverage note", func(t *testing.T) {
+		api := setupCommitteeTest(t)
+		api.GrantRelations()
+		api.Respond(resourcesPath, page(nil, ""))
+		api.Respond(resourcesPath, page(nil, ""))
+		api.Respond(countPath, `{"count": 0, "has_more": false}`)
+		_, out, err := handleSearchCommitteeMembers(context.Background(), stubCallToolRequest(), SearchCommitteeMembersArgs{ProjectUID: "P1"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(out.Warnings) != 1 || !strings.Contains(out.Warnings[0], "no committees are onboarded") {
+			t.Errorf("expected the no-groups coverage note, got %v", out.Warnings)
+		}
+	})
+	t.Run("a stale project tag is decided after the query", func(t *testing.T) {
+		// A member record tagged with the project whose group is no longer
+		// among the project's groups: its view is decided after the query.
+		api := setupCommitteeTest(t)
+		api.GrantRelations()
+		api.Respond(resourcesPath, projectGroupsPage(committeeWriterUID))
+		api.Respond(resourcesPath, rosterPage(committeeViewerUID))
+		_, out, err := handleSearchCommitteeMembers(context.Background(), stubCallToolRequest(), SearchCommitteeMembersArgs{ProjectUID: "P1"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(out.Resources) != 1 || out.Resources[0].Data["email"] != nil {
+			t.Errorf("the stale group's records follow its own view (chairs only): %+v", out.Resources)
+		}
+		if bodies := api.AccessCheckBodies(); len(bodies) != 2 {
+			t.Errorf("the stale group is checked after the query, got %v", bodies)
+		}
+	})
+	t.Run("group lookup failure fails closed", func(t *testing.T) {
+		api := setupCommitteeTest(t)
+		api.RespondStatus(resourcesPath, http.StatusBadGateway, "")
+		_, out, err := handleSearchCommitteeMembers(context.Background(), stubCallToolRequest(), SearchCommitteeMembersArgs{ProjectUID: "P1"})
+		if err == nil || err.Error() != peopleVisibilityUnavailableMessage || len(out.Resources) != 0 {
+			t.Fatalf("expected the unavailable message and no records, got %v", err)
+		}
+	})
 }
 
 func TestSearchCommitteeMembers_FailsClosed(t *testing.T) {
@@ -400,37 +485,61 @@ func TestSearchCommitteeMembers_RefusesPersonFiltersWithoutShownList(t *testing.
 			t.Error("the refusal must happen before any upstream call")
 		}
 	})
-	t.Run("project the caller does not manage", func(t *testing.T) {
+	memberQueries := func(api *stubLFXAPI) int {
+		n := 0
+		for _, r := range api.RequestsTo(resourcesPath) {
+			if r.Query.Get("type") == "committee_member" {
+				n++
+			}
+		}
+		return n
+	}
+	t.Run("project with a group the caller does not manage", func(t *testing.T) {
 		api := setupCommitteeTest(t)
 		api.GrantRelations("committee:" + committeeWriterUID + "#writer")
+		api.Respond(resourcesPath, projectGroupsPage(committeeWriterUID, committeeViewerUID))
 		_, _, err := handleSearchCommitteeMembers(context.Background(), stubCallToolRequest(), SearchCommitteeMembersArgs{ProjectUID: "P1", Name: "Pat"})
 		if err == nil || !strings.Contains(err.Error(), "committee_uid") {
 			t.Fatalf("expected a refusal naming committee_uid, got %v", err)
 		}
-		if bodies := api.AccessCheckBodies(); len(bodies) != 1 || strings.Join(bodies[0], " ") != "project:P1#writer_guard" {
-			t.Errorf("expected one project writer check, got %v", bodies)
-		}
-		if n := len(api.RequestsTo(resourcesPath)); n != 0 {
+		if n := memberQueries(api); n != 0 {
 			t.Error("the search must not run when the filter is refused")
 		}
 	})
-	t.Run("project the caller manages", func(t *testing.T) {
+	t.Run("project whose groups the caller all manages", func(t *testing.T) {
+		// Writer on each group directly, without any project role.
 		api := setupCommitteeTest(t)
-		api.GrantRelations("project:P1#writer_guard", "committee:"+committeeWriterUID+"#writer")
+		api.GrantRelations("committee:" + committeeWriterUID + "#writer")
+		api.Respond(resourcesPath, projectGroupsPage(committeeWriterUID))
 		api.Respond(resourcesPath, rosterPage(committeeWriterUID))
 		_, out, err := handleSearchCommitteeMembers(context.Background(), stubCallToolRequest(), SearchCommitteeMembersArgs{ProjectUID: "P1", Name: "Pat", OrganizationName: "Example Org"})
 		if err != nil {
-			t.Fatalf("a project writer may filter by name and organization: %v", err)
+			t.Fatalf("a caller managing every group may filter by name and organization: %v", err)
 		}
 		if len(out.Resources) != 2 || out.Resources[1].Data["email"] != "plain0@example.test" {
-			t.Errorf("a project writer gets the member list unchanged: %+v", out.Resources)
+			t.Errorf("the member list is returned unchanged: %+v", out.Resources)
+		}
+		// Narrowed to the groups checked, so a member record whose project
+		// tag is stale is never matched by the filter.
+		if got := strings.Join(api.RequestsTo(resourcesPath)[1].Query["filters_or"], ","); got != "committee_uid:"+committeeWriterUID {
+			t.Errorf("filters_or = %q", got)
 		}
 	})
-	t.Run("project writer check fails closed", func(t *testing.T) {
+	t.Run("project with no visible group", func(t *testing.T) {
+		api := setupCommitteeTest(t)
+		api.GrantRelations()
+		api.Respond(resourcesPath, page(nil, ""))
+		_, _, err := handleSearchCommitteeMembers(context.Background(), stubCallToolRequest(), SearchCommitteeMembersArgs{ProjectUID: "P1", OrganizationName: "Example Org"})
+		if err == nil || !strings.Contains(err.Error(), "member lists") || memberQueries(api) != 0 {
+			t.Fatalf("expected the refusal and no member query, got %v", err)
+		}
+	})
+	t.Run("relation check fails closed", func(t *testing.T) {
 		api := setupCommitteeTest(t)
 		api.FailAccessCheck(http.StatusServiceUnavailable)
+		api.Respond(resourcesPath, projectGroupsPage(committeeWriterUID))
 		_, _, err := handleSearchCommitteeMembers(context.Background(), stubCallToolRequest(), SearchCommitteeMembersArgs{ProjectUID: "P1", OrganizationName: "Example Org"})
-		if err == nil || err.Error() != peopleVisibilityUnavailableMessage || len(api.RequestsTo(resourcesPath)) != 0 {
+		if err == nil || err.Error() != peopleVisibilityUnavailableMessage || memberQueries(api) != 0 {
 			t.Fatalf("expected the unavailable message and no search, got %v", err)
 		}
 	})

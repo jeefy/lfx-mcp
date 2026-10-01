@@ -228,7 +228,7 @@ Two scope constants are defined in `internal/tools/scopes.go`:
 
 Registration and enforcement then diverge by tool class:
 
-- **Read tools** are registered when `canRead`, and scope enforcement ends there — there is nothing further about scopes to check at call time. (The people tools additionally shape their *results* per caller after the upstream call; see [People data for non-staff callers](#people-data-for-non-staff-callers). That is not a second authorization gate: it never widens what a tool returns.)
+- **Read tools** are registered when `canRead`, and scope enforcement ends there — there is nothing further about scopes to check at call time. (The people tools additionally shape their *results* per caller in the handler; see [People data for non-staff callers](#people-data-for-non-staff-callers). That is not a second authorization gate: it never widens what a tool returns.)
 - **Write tools** (listed in `tools.ManageScopeTools`) are *also* registered when `canRead` — not gated on `canManage` — so a read-only caller can still discover the tool and its input schema. `manage:all` is enforced at the HTTP layer instead, by `requireManageScopeHTTP` in `main.go`: it inspects the JSON-RPC body of each `/mcp` POST, and a `tools/call` for a name in `tools.ManageScopeTools` from a caller without `canManage` gets an HTTP `403` with a `WWW-Authenticate: Bearer error="insufficient_scope"` challenge, without ever reaching the MCP handler. This lets an OAuth client request `read:all` up front and step up to `manage:all` only when the user actually attempts a write, rather than needing both scopes from the first consent screen. The OAuth Protected Resource Metadata document (`scopes_supported`) accordingly advertises both `read:all` and `manage:all` by default (`tools.DefaultScopes()`), so a client can request both up front if it chooses to — the per-call 403 is still what tells a caller which scope a specific tool needs, not the PRM. A client that ignores advertised scopes entirely (see `tools.IsScopeBlindClient`) is treated as having requested `tools.DefaultScopes()` (including `manage:all`): such a client offers no consent UI to withhold a scope from, so it gets the same default behavior any other client gets by requesting both scopes up front, and users rely on per-call "ask" policies for write tools regardless of how the scope was granted.
 - **Staff-only tools** (the LFX Lens-backed tools and their guidance) are gated on the `lf_staff` JWT claim in addition to `canRead`, and remain absent from `tools/list` for non-staff callers — the claim cannot be stepped up like a scope, so there is nothing to discover ahead of time.
 
@@ -261,8 +261,9 @@ yet (product decisions pending); `nonPeopleTools` in
   `tools.WithLogger`); `tools.HasFullView(ctx)` reads it and reports
   **false when the flag is absent**, so a handler reached without the
   middleware narrows rather than widens.
-- **Filtering happens in the handler, after the upstream call**, never at
-  registration and never through the allowlist. A full-view caller takes
+- **Shaping happens in the handler**: the view is decided and the query
+  narrowed before the upstream call, and records are selected and projected
+  after it; never at registration and never through the allowlist. A full-view caller takes
   none of these paths and makes no extra upstream call. The rules only ever
   remove records or fields; a tool never returns anything it did not return
   before.
@@ -293,18 +294,21 @@ yet (product decisions pending); `nonPeopleTools` in
   the caller's identity and, where hosts are shown, `host:true`;
   `participantNarrowing`) or skipped altogether when the view shows nothing
   — so a `page_token` never spans records the caller is not shown and paging
-  cannot count them. A search of one group follows the same order: the
-  view is decided first, and a group whose member list is not shown is read
-  as its chairs only (`committeeChairFilters`). The post-query selection
-  stays as a second check.
+  cannot count them. Group member searches follow the same order: the
+  views of the group named, or of every group of the project visible to the
+  caller (`projectGroupUIDs`), are decided first, and the query reads every
+  member of the groups whose list is shown and the chairs of the others
+  (`projectRosterFilters`, `committeeChairFilters`). The post-query
+  selection stays as a second check, and decides the view of any group the
+  narrowing did not cover (a member record whose project tag is stale).
 - **Refuse filters that can probe for a person** (`name`, `org_name`,
   e-mail or username tags, `filters_or` / `filters_all` on people fields)
   wherever the rule would not show the caller that list, with a tool error
   that names the allowed form. For groups, `name` also matches the username,
   which the Members tab never shows, so it is accepted only from a group's
   writers; `organization_name` from anyone shown the member list. Over a
-  whole project both need `writer_guard` on the project, from which every
-  group's `writer` derives (`managesProjectGroups`).
+  whole project the same holds for every group of the project visible to
+  the caller (`personFilterShown`).
   `count_lfx_resources` applies the same gate per people type
   (`peopleCountGate`): for `v1_meeting` and `v1_past_meeting` it accepts
   `filters_or` / `filters_all` only on an allowlist of the record's own

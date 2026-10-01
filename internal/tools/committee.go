@@ -566,42 +566,52 @@ func searchCommitteeMembers(ctx context.Context, req *mcp.CallToolRequest, args 
 	logger.InfoContext(ctx, "searching committee members", "committee_uid", args.CommitteeUID, "project_uid", args.ProjectUID, "organization_name", args.OrganizationName, "name", args.Name, "page_size", pageSize)
 
 	// Without full view, the result follows what LFX Self Serve shows the
-	// caller of each group (people_visibility.go). For one group the view is
-	// decided before the query: a group whose member list is not shown is
-	// read as its chairs only, so pages never span the records withheld. A
-	// filter that can probe for a person is accepted only where the list is
-	// shown: organization_name for a group whose member list is shown; name
-	// only for a group the caller manages, because the query matches it
-	// against the username too, a field the Members tab does not show. Over a
-	// whole project both need the caller to manage every group in it.
+	// caller of each group (people_visibility.go). The views are decided
+	// before the query, for the one group named or for every group of the
+	// project visible to the caller, and the query is narrowed to them: the
+	// chairs of a group whose member list is not shown, every member of one
+	// whose list is. Pages then never span the records withheld. A filter
+	// that can probe for a person is accepted only where every list it runs
+	// over is shown: organization_name where the member lists are shown;
+	// name only where the caller manages every group, because the query
+	// matches it against the username too, a field the Members tab does not
+	// show.
 	fullView := HasFullView(ctx)
 	var views map[string]rosterView
+	noVisibleGroups := false
 	if !fullView {
 		hasPersonFilter := args.Name != "" || args.OrganizationName != ""
 		singular, uidArg := committeeTerms(committeeNoun)
-		refusal := fmt.Sprintf("Error: name and organization_name are available for a %s you manage (set %s) or a project whose %ss you all manage (set project_uid); organization_name also for a %s whose member list LFX Self Serve shows you.", singular, uidArg, singular, singular)
+		refusal := fmt.Sprintf("Error: name is available for a %s you manage (set %s) or a project all of whose %ss you manage (set project_uid); organization_name for a %s, or a project's %ss, whose member lists LFX Self Serve shows you.", singular, uidArg, singular, singular, singular)
+		var uids []string
 		switch {
 		case args.CommitteeUID != "":
-			views, err = groupRosterViews(ctx, clients, tokenInfo, []string{args.CommitteeUID})
+			uids = []string{args.CommitteeUID}
+		case args.ProjectUID != "":
+			uids, err = projectGroupUIDs(ctx, clients, args.ProjectUID)
+			if err != nil {
+				logger.ErrorContext(ctx, "project group lookup failed", "error", err)
+				return nil, resourceSearchResult{}, toolError(peopleVisibilityUnavailableMessage)
+			}
+			noVisibleGroups = len(uids) == 0
+		case hasPersonFilter:
+			return nil, resourceSearchResult{}, toolError(refusal)
+		}
+		if len(uids) > 0 || args.ProjectUID != "" {
+			views, err = groupRosterViews(ctx, clients, tokenInfo, uids)
 			if err != nil {
 				logger.ErrorContext(ctx, "group roster visibility check failed", "error", err)
 				return nil, resourceSearchResult{}, toolError(peopleVisibilityUnavailableMessage)
 			}
-			view := views[args.CommitteeUID]
-			if hasPersonFilter && (view == rosterChairsOnly || (args.Name != "" && view != rosterFull)) {
+			if hasPersonFilter && !personFilterShown(uids, views, args.Name != "") {
 				return nil, resourceSearchResult{}, toolError(refusal)
 			}
-			if view == rosterChairsOnly {
-				payload.FiltersOr = committeeChairFilters()
-			}
-		case hasPersonFilter:
-			manages, err := managesProjectGroups(ctx, clients, args.ProjectUID)
-			if err != nil {
-				logger.ErrorContext(ctx, "project writer check failed", "error", err)
-				return nil, resourceSearchResult{}, toolError(peopleVisibilityUnavailableMessage)
-			}
-			if !manages {
+			filters, narrowed := projectRosterFilters(uids, views)
+			if !narrowed && hasPersonFilter {
 				return nil, resourceSearchResult{}, toolError(refusal)
+			}
+			if narrowed && (args.CommitteeUID == "" || views[args.CommitteeUID] == rosterChairsOnly) {
+				payload.FiltersOr = filters
 			}
 		}
 	}
@@ -612,12 +622,28 @@ func searchCommitteeMembers(ctx context.Context, req *mcp.CallToolRequest, args 
 		return nil, resourceSearchResult{}, toolError(friendlyAPIError("failed to search committee members", err))
 	}
 
+	rawEmpty := len(result.Resources) == 0
 	if !fullView {
-		if views == nil {
-			views, err = groupRosterViews(ctx, clients, tokenInfo, dataStrings(result.Resources, "committee_uid"))
+		// A page can carry groups whose view was not decided before the
+		// query: a search with neither scope, or member records whose
+		// project tag is stale. Their views are decided now.
+		var undecided []string
+		for _, uid := range dataStrings(result.Resources, "committee_uid") {
+			if _, ok := views[uid]; !ok {
+				undecided = append(undecided, uid)
+			}
+		}
+		if len(undecided) > 0 {
+			more, err := groupRosterViews(ctx, clients, tokenInfo, undecided)
 			if err != nil {
 				logger.ErrorContext(ctx, "group roster visibility check failed", "error", err)
 				return nil, resourceSearchResult{}, toolError(peopleVisibilityUnavailableMessage)
+			}
+			if views == nil {
+				views = make(map[string]rosterView, len(more))
+			}
+			for uid, view := range more {
+				views[uid] = view
 			}
 		}
 		result.Resources = filterCommitteeMembers(result.Resources, views)
@@ -626,8 +652,14 @@ func searchCommitteeMembers(ctx context.Context, req *mcp.CallToolRequest, args 
 	out := newResourceSearchResult(resourceNoun, result, pageSize, args.PageToken != "")
 	// The roster-coverage note, when it applies, is the more specific
 	// statement of an empty first page, so it replaces the generic warning.
-	if note := rosterCoverageNote(ctx, logger, clients, args.ProjectUID, args.PageToken, committeeNoun, result); note != "" {
-		out.Warnings = []string{note}
+	// It speaks of the caller's filters, so without full view it applies
+	// only where the page was empty before the rule touched it and the query
+	// was not narrowed to the chairs, or where no group of the project is
+	// visible at all.
+	if fullView || noVisibleGroups || (rawEmpty && len(payload.FiltersOr) == 0) {
+		if note := rosterCoverageNote(ctx, logger, clients, args.ProjectUID, args.PageToken, committeeNoun, result); note != "" {
+			out.Warnings = []string{note}
+		}
 	}
 
 	prettyJSON, err := json.MarshalIndent(out, "", "  ")

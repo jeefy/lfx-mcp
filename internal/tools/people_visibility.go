@@ -6,9 +6,10 @@
 // This file holds the rules that make people data match what LFX Self Serve
 // shows on screen to a caller without full view (see full_view.go): the
 // predicates, evaluated with the caller's own exchanged token, and the
-// projections that reduce or drop records. Handlers call them after the
-// upstream query; a caller with full view never reaches them. The rules only
-// ever remove records or fields, never add any.
+// projections that reduce or drop records. Handlers decide the view before
+// the upstream query and narrow the query to it, then select and project the
+// records after it; a caller with full view never reaches them. The rules
+// only ever remove records or fields, never add any.
 package tools
 
 import (
@@ -218,19 +219,82 @@ func committeeChairFilters() []string {
 	return filters
 }
 
-// managesProjectGroups reports whether the caller writes every group of a
-// project (committee#writer derives from writer_guard on the group's
-// project), checked as the caller. An empty projectUID is never managed.
-func managesProjectGroups(ctx context.Context, clients *lfxv2.Clients, projectUID string) (bool, error) {
-	if projectUID == "" {
-		return false, nil
+// projectGroupUIDs returns the UIDs of the project's groups visible to the
+// caller, from the committee records whose parent is the project, read as
+// the caller. Member records carry the same visibility as their group, so
+// these are the groups whose members a project-wide search can return.
+func projectGroupUIDs(ctx context.Context, clients *lfxv2.Clients, projectUID string) ([]string, error) {
+	resourceType := committeeResourceType
+	var uids []string
+	var pageToken *string
+	for pages := 0; ; pages++ {
+		if pages >= peopleLookupMaxPages {
+			return nil, errPeopleVisibilityCap
+		}
+		result, err := clients.QuerySvc.QueryResources(ctx, &querysvc.QueryResourcesPayload{
+			Version:   "1",
+			Type:      &resourceType,
+			Parent:    strPtr("project:" + projectUID),
+			PageSize:  peopleLookupPageSize,
+			Sort:      "name_asc",
+			PageToken: pageToken,
+		})
+		if err != nil {
+			return nil, err
+		}
+		for _, r := range result.Resources {
+			uid := dataString(resourceData(r), "uid")
+			if uid == "" && r != nil && r.ID != nil {
+				uid = *r.ID
+			}
+			if uid != "" {
+				uids = append(uids, uid)
+			}
+		}
+		if !hasPageToken(result.PageToken) {
+			return dedupeStrings(uids), nil
+		}
+		pageToken = result.PageToken
 	}
-	relation := "project:" + projectUID + "#writer_guard"
-	relations, err := clients.CheckRelations(ctx, []string{relation})
-	if err != nil {
-		return false, err
+}
+
+// projectRosterFilters is the filters_or clause that narrows a project-wide
+// committee_member query to what views shows: every member of the groups
+// whose member list is shown, and the chairs of the others. ok is false when
+// the clause would exceed peopleFilterChunk terms; the query is then read
+// unnarrowed and the post-query selection alone applies.
+func projectRosterFilters(uids []string, views map[string]rosterView) (filters []string, ok bool) {
+	chairs := false
+	for _, uid := range uids {
+		if views[uid] == rosterChairsOnly {
+			chairs = true
+			continue
+		}
+		filters = append(filters, "committee_uid:"+uid)
 	}
-	return relations[relation], nil
+	if chairs || len(filters) == 0 {
+		filters = append(committeeChairFilters(), filters...)
+	}
+	if len(filters) > peopleFilterChunk {
+		return nil, false
+	}
+	return filters, true
+}
+
+// personFilterShown reports whether a person filter may run over the
+// groups uids: every one of them shows the caller its member list, and, for
+// name (needFull), every one is managed by the caller. No groups, no list.
+func personFilterShown(uids []string, views map[string]rosterView, needFull bool) bool {
+	if len(uids) == 0 {
+		return false
+	}
+	for _, uid := range uids {
+		view := views[uid]
+		if view == rosterChairsOnly || (needFull && view != rosterFull) {
+			return false
+		}
+	}
+	return true
 }
 
 // committeeMemberRoleName returns the record's role.name, or "".
