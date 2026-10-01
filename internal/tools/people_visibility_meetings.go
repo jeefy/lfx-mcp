@@ -414,22 +414,35 @@ func filterParticipants(resources []*querysvc.Resource, views map[string]partici
 // meeting, never across meetings, keeping the meetings and the records in
 // first-encounter order. A caller without full view may hold different
 // views of the meetings on one page; merging across them would let one
-// meeting's record decide, or fill in, another's.
-func dedupeParticipantsPerMeeting(resources []*querysvc.Resource) []*querysvc.Resource {
-	// Group by meeting, remembering where each group's records sat, then
-	// place every merged record at the position of its group's next
-	// original slot so the page keeps its sort order across meetings.
+// meeting's record decide, or fill in, another's. Outside the meetings the
+// caller organizes, the caller's own records and the other records shown
+// (hosts) are de-duplicated apart: a merge fills blank fields from every
+// record it joins, so an own record merged with a host's would return the
+// host's fields unreduced, and a host record merged with the caller's would
+// carry the caller's. Every merge joins only records with the same view.
+func dedupeParticipantsPerMeeting(resources []*querysvc.Resource, views map[string]participantView, tokenInfo *auth.TokenInfo) []*querysvc.Resource {
+	// Group by meeting (and, outside organized meetings, by ownership),
+	// remembering where each group's records sat, then place every merged
+	// record at the position of its group's next original slot so the page
+	// keeps its sort order across meetings.
+	groupKey := func(data map[string]any) string {
+		id := dataString(data, "meeting_and_occurrence_id")
+		if views[id] != participantOrganizer && isOwnRecord(data, tokenInfo) {
+			return id + "\x00own"
+		}
+		return id
+	}
 	groups := make(map[string][]*querysvc.Resource)
 	positions := make(map[string][]int)
 	for i, r := range resources {
-		id := dataString(resourceData(r), "meeting_and_occurrence_id")
-		groups[id] = append(groups[id], r)
-		positions[id] = append(positions[id], i)
+		key := groupKey(resourceData(r))
+		groups[key] = append(groups[key], r)
+		positions[key] = append(positions[key], i)
 	}
 	slots := make([]*querysvc.Resource, len(resources))
-	for id, group := range groups {
+	for key, group := range groups {
 		for i, merged := range dedupeParticipants(group) {
-			slots[positions[id][i]] = merged
+			slots[positions[key][i]] = merged
 		}
 	}
 	out := make([]*querysvc.Resource, 0, len(resources))

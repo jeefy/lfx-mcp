@@ -553,7 +553,7 @@ func handleSearchPastMeetingParticipants(ctx context.Context, req *mcp.CallToolR
 		if fullView {
 			out.Resources = dedupeParticipants(out.Resources)
 		} else {
-			out.Resources = dedupeParticipantsPerMeeting(out.Resources)
+			out.Resources = dedupeParticipantsPerMeeting(out.Resources, views, tokenInfo)
 		}
 		people := len(out.Resources)
 		out.People = &people

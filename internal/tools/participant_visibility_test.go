@@ -231,6 +231,52 @@ func TestParticipants_ProjectionNeverRunsBeforeDedupe(t *testing.T) {
 	}
 }
 
+func TestParticipants_OwnAndHostRecordsNeverMerge(t *testing.T) {
+	// In a full-access meeting the caller's own record is returned in full
+	// and a host's as a stub. Identity matching can join the two (same name
+	// with no username or e-mail on the host record, or a stored e-mail they
+	// share); merged, the own record would carry the host's fields in full.
+	hostOrg := func(doc string) string {
+		return strings.Replace(doc, `"org_name": "Example Org"`, `"org_name": "Host Org"`, 1)
+	}
+	cases := []struct {
+		name string
+		own  string
+		host string
+	}{
+		{"same name, host without username or e-mail",
+			participantDocFor("mine", pastPublic, stubCallerEmail, "Stub", "P", "", false, false),
+			hostOrg(participantDocFor("host", pastPublic, "", "Stub", "P", "", true, true))},
+		{"own by username, sharing a stored e-mail with the host",
+			participantDocFor("mine", pastPublic, "shared@example.test", "Stub", "P", stubCallerUsername, false, false),
+			hostOrg(participantDocFor("host", pastPublic, "shared@example.test", "Hosty", "H", "", true, true))},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			api := setupParticipantTest(t)
+			api.GrantRelations()
+			api.Respond(resourcesPath, pastDocs(pastPublic))
+			api.Respond(resourcesPath, page([]string{tc.own, tc.host}, ""))
+			res, out, _ := handleSearchPastMeetingParticipants(context.Background(), stubCallToolRequest(), SearchPastMeetingParticipantsArgs{PastMeetingID: pastPublic})
+			if res.IsError {
+				t.Fatal(allResultText(t, res))
+			}
+			got := participantsOf(t, out)
+			if uids(got) != "mine host" {
+				t.Fatalf("own and host records must stay apart, got %q", uids(got))
+			}
+			if got[0]["org_name"] != "Example Org" || got[0]["host"] != false {
+				t.Errorf("the own record must carry only its own fields: %v", got[0])
+			}
+			for _, field := range []string{"email", "org_name", "sessions", "username"} {
+				if _, ok := got[1][field]; ok {
+					t.Errorf("the host stub must not carry %s: %v", field, got[1])
+				}
+			}
+		})
+	}
+}
+
 func TestParticipants_HiddenRecordsNeverMergeIntoShownOnes(t *testing.T) {
 	// One person with records in a meeting the caller organizes and in a
 	// private meeting of the same date range. The private record must

@@ -280,8 +280,10 @@ yet (product decisions pending); `nonPeopleTools` in
   query-backed lookups `lookupNotVisibleMessage`, a service-backed lookup
   (`get_committee_member`) the text `friendlyAPIError` gives that service's
   404 (`serviceLookupNotVisibleMessage`). Participants are de-duplicated
-  only after the records the caller is not shown are dropped, and only
-  within one meeting, so a merge never carries a hidden record's fields.
+  only after the records the caller is not shown are dropped, only within
+  one meeting, and, outside the meetings the caller organizes, with the
+  caller's own records apart from the hosts', so a merge only ever joins
+  records with the same view and never carries a field that view hides.
 - **The scope is one object, decided before the query.** Self Serve shows
   registrants and participants per meeting, so a caller without full view
   must name a `meeting_id` (registrants) or a `past_meeting_id` or a date
