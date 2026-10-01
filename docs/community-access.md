@@ -22,7 +22,7 @@ any project. Your access comes from your place in LFX, linked to your LFX accoun
 and organizations, the meetings you are invited to or attend, and the mailing lists you subscribe to. These are
 managed in LFX Self Serve, as they are today.
 
-You can:
+**You can:**
 
 - find projects, and the groups, meetings and mailing lists you take part in or have a role on;
 - look up group members, meeting registrants and attendees, under the same access rules as LFX Self Serve;
@@ -38,7 +38,7 @@ You can:
 - if you have a role at an organization or are one of its key contacts, see its memberships, key contacts and
   group seats; if you have a manager or viewer role on a project, see the memberships and key contacts for it.
 
-You cannot:
+**You cannot:**
 
 - see private groups, meetings or mailing lists unless you take part in them or have a manager or viewer role on
   the project or group they belong to;
