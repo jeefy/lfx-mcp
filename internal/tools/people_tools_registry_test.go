@@ -343,7 +343,7 @@ func assertFixtureFieldsReturned(t *testing.T, fixtures []string, res *mcp.CallT
 // when a fixture changes, never from this branch's handlers.
 func assertGoldenOutput(t *testing.T, name string, res *mcp.CallToolResult, out any) {
 	t.Helper()
-	wantText, err := os.ReadFile(filepath.Join("testdata", "people_full_view", name+".txt"))
+	wantText, err := os.ReadFile(filepath.Join("testdata", "people_full_view", name+".golden"))
 	if err != nil {
 		t.Fatalf("golden missing: %v", err)
 	}
@@ -518,7 +518,7 @@ func TestPeopleTools_FullViewCallsMatchMain(t *testing.T) {
 				t.Fatalf("unexpected outcome (want error %v): %v %s", tc.wantError, err, allResultText(t, res))
 			}
 			assertGoldenOutput(t, tc.name, res, out)
-			want, err := os.ReadFile(filepath.Join("testdata", "people_full_view", tc.name+".requests.txt"))
+			want, err := os.ReadFile(filepath.Join("testdata", "people_full_view", tc.name+".requests.golden"))
 			if err != nil {
 				t.Fatalf("golden missing: %v", err)
 			}
