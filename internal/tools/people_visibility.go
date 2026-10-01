@@ -261,8 +261,8 @@ func projectGroupUIDs(ctx context.Context, clients *lfxv2.Clients, projectUID st
 // projectRosterFilters is the filters_or clause that narrows a project-wide
 // committee_member query to what views shows: every member of the groups
 // whose member list is shown, and the chairs of the others. ok is false when
-// the clause would exceed peopleFilterChunk terms; the query is then read
-// unnarrowed and the post-query selection alone applies.
+// the clause would exceed peopleFilterChunk terms, and the search is then
+// refused rather than read unnarrowed.
 func projectRosterFilters(uids []string, views map[string]rosterView) (filters []string, ok bool) {
 	chairs := false
 	for _, uid := range uids {

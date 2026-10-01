@@ -570,7 +570,9 @@ func searchCommitteeMembers(ctx context.Context, req *mcp.CallToolRequest, args 
 	// before the query, for the one group named or for every group of the
 	// project visible to the caller, and the query is narrowed to them: the
 	// chairs of a group whose member list is not shown, every member of one
-	// whose list is. Pages then never span the records withheld. A filter
+	// whose list is. Pages then never span the records withheld, so a search
+	// that cannot be narrowed (no scope, or a project whose clause would
+	// exceed the filter cap) is refused rather than read and emptied. A filter
 	// that can probe for a person is accepted only where every list it runs
 	// over is shown: organization_name where the member lists are shown;
 	// name only where the caller manages every group, because the query
@@ -583,6 +585,7 @@ func searchCommitteeMembers(ctx context.Context, req *mcp.CallToolRequest, args 
 		hasPersonFilter := args.Name != "" || args.OrganizationName != ""
 		singular, uidArg := committeeTerms(committeeNoun)
 		refusal := fmt.Sprintf("Error: name is available for a %s you manage (set %s) or a project all of whose %ss you manage (set project_uid); organization_name for a %s, or a project's %ss, whose member lists LFX Self Serve shows you.", singular, uidArg, singular, singular, singular)
+		scopeRefusal := fmt.Sprintf("Error: %s members are available per %s or project as LFX Self Serve shows them to you: set %s or project_uid.", singular, singular, uidArg)
 		var uids []string
 		switch {
 		case args.CommitteeUID != "":
@@ -596,23 +599,25 @@ func searchCommitteeMembers(ctx context.Context, req *mcp.CallToolRequest, args 
 			noVisibleGroups = len(uids) == 0
 		case hasPersonFilter:
 			return nil, resourceSearchResult{}, toolError(refusal)
+		default:
+			return nil, resourceSearchResult{}, toolError(scopeRefusal)
 		}
-		if len(uids) > 0 || args.ProjectUID != "" {
-			views, err = groupRosterViews(ctx, clients, tokenInfo, uids)
-			if err != nil {
-				logger.ErrorContext(ctx, "group roster visibility check failed", "error", err)
-				return nil, resourceSearchResult{}, toolError(peopleVisibilityUnavailableMessage)
-			}
-			if hasPersonFilter && !personFilterShown(uids, views, args.Name != "") {
-				return nil, resourceSearchResult{}, toolError(refusal)
-			}
-			filters, narrowed := projectRosterFilters(uids, views)
-			if !narrowed && hasPersonFilter {
-				return nil, resourceSearchResult{}, toolError(refusal)
-			}
-			if narrowed && (args.CommitteeUID == "" || views[args.CommitteeUID] == rosterChairsOnly) {
-				payload.FiltersOr = filters
-			}
+		views, err = groupRosterViews(ctx, clients, tokenInfo, uids)
+		if err != nil {
+			logger.ErrorContext(ctx, "group roster visibility check failed", "error", err)
+			return nil, resourceSearchResult{}, toolError(peopleVisibilityUnavailableMessage)
+		}
+		if hasPersonFilter && !personFilterShown(uids, views, args.Name != "") {
+			return nil, resourceSearchResult{}, toolError(refusal)
+		}
+		filters, narrowed := projectRosterFilters(uids, views)
+		if !narrowed {
+			// Only a project with more groups whose lists are shown than
+			// one filter clause holds; one group always fits.
+			return nil, resourceSearchResult{}, toolError(fmt.Sprintf("Error: this project has too many %ss whose member lists LFX Self Serve shows you to search at once: set %s.", singular, uidArg))
+		}
+		if args.CommitteeUID == "" || views[args.CommitteeUID] == rosterChairsOnly {
+			payload.FiltersOr = filters
 		}
 	}
 
@@ -625,8 +630,8 @@ func searchCommitteeMembers(ctx context.Context, req *mcp.CallToolRequest, args 
 	rawEmpty := len(result.Resources) == 0
 	if !fullView {
 		// A page can carry groups whose view was not decided before the
-		// query: a search with neither scope, or member records whose
-		// project tag is stale. Their views are decided now.
+		// query: member records whose project tag is stale, read through
+		// the chairs clause. Their views are decided now.
 		var undecided []string
 		for _, uid := range dataStrings(result.Resources, "committee_uid") {
 			if _, ok := views[uid]; !ok {

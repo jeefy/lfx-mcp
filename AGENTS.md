@@ -298,9 +298,12 @@ yet (product decisions pending); `nonPeopleTools` in
   views of the group named, or of every group of the project visible to the
   caller (`projectGroupUIDs`), are decided first, and the query reads every
   member of the groups whose list is shown and the chairs of the others
-  (`projectRosterFilters`, `committeeChairFilters`). The post-query
-  selection stays as a second check, and decides the view of any group the
-  narrowing did not cover (a member record whose project tag is stale).
+  (`projectRosterFilters`, `committeeChairFilters`). A group member search
+  with neither scope, or over a project whose clause would exceed
+  `peopleFilterChunk` terms, is refused: it could not be narrowed. The
+  post-query selection stays as a second check, and decides the view of any
+  group the narrowing did not cover (a member record whose project tag is
+  stale).
 - **Refuse filters that can probe for a person** (`name`, `org_name`,
   e-mail or username tags, `filters_or` / `filters_all` on people fields)
   wherever the rule would not show the caller that list, with a tool error

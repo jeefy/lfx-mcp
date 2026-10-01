@@ -159,7 +159,7 @@ func TestSearchCommitteeMembers_MissingFlagIsNotFullView(t *testing.T) {
 	api.GrantRelations()
 	api.Respond(resourcesPath, rosterPage(committeeViewerUID))
 
-	res, _, err := handleSearchCommitteeMembers(context.Background(), stubCallToolRequest(), SearchCommitteeMembersArgs{})
+	res, _, err := handleSearchCommitteeMembers(context.Background(), stubCallToolRequest(), SearchCommitteeMembersArgs{CommitteeUID: committeeViewerUID})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -436,29 +436,30 @@ func TestSearchCommitteeMembers_ProjectNarrowingAndCoverageNote(t *testing.T) {
 func TestSearchCommitteeMembers_FailsClosed(t *testing.T) {
 	cases := []struct {
 		name  string
+		uid   string
 		setup func(api *stubLFXAPI)
 	}{
-		{"access-check 503", func(api *stubLFXAPI) {
+		{"access-check 503", committeeViewerUID, func(api *stubLFXAPI) {
 			api.FailAccessCheck(http.StatusServiceUnavailable)
 			api.Respond(resourcesPath, rosterPage(committeeViewerUID))
 		}},
-		{"settings 500", func(api *stubLFXAPI) {
+		{"settings 500", committeeAuditorUID, func(api *stubLFXAPI) {
 			api.GrantRelations("committee:" + committeeAuditorUID + "#auditor")
-			api.Respond(resourcesPath, rosterPage(committeeAuditorUID))
 			api.Respond(resourcesPath, callerMembershipPage(committeeAuditorUID))
 			api.RespondStatus("/committees/"+committeeAuditorUID+"/settings", http.StatusInternalServerError, `{"message":"boom"}`)
-		}},
-		{"membership lookup error", func(api *stubLFXAPI) {
-			api.GrantRelations("committee:" + committeeAuditorUID + "#auditor")
 			api.Respond(resourcesPath, rosterPage(committeeAuditorUID))
+		}},
+		{"membership lookup error", committeeAuditorUID, func(api *stubLFXAPI) {
+			api.GrantRelations("committee:" + committeeAuditorUID + "#auditor")
 			api.RespondStatus(resourcesPath, http.StatusBadGateway, "")
+			api.Respond(resourcesPath, rosterPage(committeeAuditorUID))
 		}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			api := setupCommitteeTest(t)
 			tc.setup(api)
-			res, out, err := handleSearchCommitteeMembers(context.Background(), stubCallToolRequest(), SearchCommitteeMembersArgs{})
+			res, out, err := handleSearchCommitteeMembers(context.Background(), stubCallToolRequest(), SearchCommitteeMembersArgs{CommitteeUID: tc.uid})
 			if err == nil {
 				t.Fatalf("expected a tool error, got result %s", allResultText(t, res))
 			}
@@ -851,4 +852,41 @@ func TestPeopleToolsDescribeTheVisibilityRule(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSearchCommitteeMembers_RefusesSearchesItCannotNarrow(t *testing.T) {
+	t.Run("no scope reads nothing", func(t *testing.T) {
+		api := setupCommitteeTest(t)
+		api.Respond(resourcesPath, rosterPage(committeeViewerUID))
+		_, out, err := handleSearchCommitteeMembers(context.Background(), stubCallToolRequest(), SearchCommitteeMembersArgs{PageSize: 1})
+		if err == nil || !strings.Contains(err.Error(), "set committee_uid or project_uid") {
+			t.Fatalf("expected the scope refusal, got %v", err)
+		}
+		if len(api.Requests()) != 0 || len(out.Resources) != 0 {
+			t.Errorf("a refused search must make no upstream call, got %d", len(api.Requests()))
+		}
+	})
+	t.Run("project beyond the filter cap reads no members", func(t *testing.T) {
+		api := setupCommitteeTest(t)
+		uids := make([]string, peopleFilterChunk+1)
+		docs := make([]string, len(uids))
+		var relations []string
+		for i := range uids {
+			uids[i] = fmt.Sprintf("00000000-0000-4000-8000-%012d", i)
+			docs[i] = fmt.Sprintf(`{"type":"committee","id":%q,"data":{"uid":%q}}`, uids[i], uids[i])
+			relations = append(relations, "committee:"+uids[i]+"#writer")
+		}
+		api.Respond(resourcesPath, page(docs, ""))
+		api.GrantRelations(relations...)
+		api.Respond(resourcesPath, rosterPage(committeeViewerUID))
+		_, _, err := handleSearchCommitteeMembers(context.Background(), stubCallToolRequest(), SearchCommitteeMembersArgs{ProjectUID: "P1", PageSize: 1})
+		if err == nil || !strings.Contains(err.Error(), "set committee_uid") {
+			t.Fatalf("expected the cap refusal, got %v", err)
+		}
+		for _, r := range api.RequestsTo(resourcesPath) {
+			if r.Query.Get("type") == committeeMemberResourceType {
+				t.Errorf("no member query may run past the cap: %v", r.Query)
+			}
+		}
+	})
 }
