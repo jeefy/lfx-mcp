@@ -279,21 +279,39 @@ rule in user terms.
   404 (`serviceLookupNotVisibleMessage`). Participants are de-duplicated
   only after the records the caller is not shown are dropped, and only
   within one meeting, so a merge never carries a hidden record's fields.
-- **Count filters on people fields are refused too**: `count_lfx_resources`
-  refuses `filters_or` / `filters_all` on the fields of meeting and past
-  meeting records that name people (`created_by`, `owner`, `organizers`,
-  `user_id`, `updated_by`, `updated_by_list`).
+- **The scope is one object, decided before the query.** Self Serve shows
+  registrants and participants per meeting, so a caller without full view
+  must name a `meeting_id` (registrants) or a `past_meeting_id` or a date
+  range (participants); a page over a whole project or group is refused
+  rather than read and emptied. The view is decided first, and the query is
+  then **narrowed to the records the caller may be shown** (`filters_or` on
+  the caller's identity and, where hosts are shown, `host:true`;
+  `participantNarrowing`) or skipped altogether when the view shows nothing
+  — so a `page_token` never spans records the caller is not shown and paging
+  cannot count them. The post-query selection stays as a second check.
 - **Refuse filters that can probe for a person** (`name`, `org_name`,
   e-mail or username tags, `filters_or` / `filters_all` on people fields)
   wherever the rule would not show the caller that list, with a tool error
-  that names the allowed form. `count_lfx_resources` applies the same gate
-  per people type (`peopleCountGate`).
+  that names the allowed form. For groups, `name` also matches the username,
+  which the Members tab never shows, so it is accepted only from a group's
+  writers; `organization_name` from anyone shown the member list.
+  `count_lfx_resources` applies the same gate per people type
+  (`peopleCountGate`): for `v1_meeting` and `v1_past_meeting` it accepts
+  `filters_or` / `filters_all` only on an allowlist of the record's own
+  fields (`meetingCountFilterFields`) and `date_field` only from
+  `meetingCountDateFields`, so no field naming a person has to be enumerated.
 
 Adding a people tool: decide the view per parent object with one of the
-`*Views` predicates (or add one next to them), project each record with the
-matching `project*` function after the query, short-circuit on
-`HasFullView(ctx)`, and add the tool to the tests that walk the people tools
-(`TestPeopleTools_*` in `internal/tools`).
+`*Views` predicates (or add one next to them) before the query, narrow the
+query to what the view shows, project each record with the matching
+`project*` function after it, short-circuit on `HasFullView(ctx)`, and add
+the tool to the registry the people-tool tests walk (`peopleTools` in
+`internal/tools/people_tools_registry_test.go`; `TestPeopleTools_RegistryIsComplete`
+fails until every registered people tool has an entry). The full-view walk
+compares each tool's output byte for byte with goldens in
+`internal/tools/testdata/people_full_view/`, generated from the handlers at
+`origin/main` before this rule existed; regenerate a golden only from a
+checkout that predates the people rules, never from the branch under test.
 
 ### Tool Implementation Steps
 
