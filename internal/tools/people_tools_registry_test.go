@@ -80,10 +80,10 @@ var peopleTools = []peopleToolCase{
 	{
 		name: "search_meeting_registrants",
 		setup: func(_ *testing.T, api *stubLFXAPI, full bool) {
-			api.Respond(resourcesPath, page([]string{registrantDoc("reg", registryMeeting, "registrant@example.test", true)}, ""))
 			if !full {
-				api.Respond(resourcesPath, page(nil, "")) // the caller's own registrations
+				api.Respond(resourcesPath, page(nil, "")) // the caller's own registrations, decided first
 			}
+			api.Respond(resourcesPath, page([]string{registrantDoc("reg", registryMeeting, "registrant@example.test", true)}, ""))
 		},
 		call: func(ctx context.Context) (*mcp.CallToolResult, any, error) {
 			return handleSearchMeetingRegistrants(ctx, stubCallToolRequest(), SearchMeetingRegistrantsArgs{MeetingID: registryMeeting})

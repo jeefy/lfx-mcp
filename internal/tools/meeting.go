@@ -47,6 +47,15 @@ const (
 	pastMeetingSummaryIDTagPrefix = "past_meeting_summary_id:"
 )
 
+// registrantScopeRefusal is the tool error for a caller without full view who
+// names no meeting: LFX Self Serve shows registrants per meeting, to its
+// organizers and registrants, and has no cross-meeting list for anyone else.
+const registrantScopeRefusal = "Error: registrants are available per meeting as LFX Self Serve shows them to you: set meeting_id."
+
+// registrantFilterRefusal is the tool error for a name filter from a caller
+// without full view on a meeting they do not organize.
+const registrantFilterRefusal = "Error: name is available for meetings you organize: set meeting_id to a meeting you organize."
+
 // resourceLookup selects how a single record is fetched from the query
 // service. A non-empty tagPrefix looks the record up by its lookup tag
 // (`<tagPrefix><uid>`); an empty one keeps the `uid:` field filter that
@@ -131,7 +140,7 @@ func RegisterSearchMeetingRegistrants(server *mcp.Server, asGroups bool) {
 	if asGroups {
 		mcp.AddTool(server, &mcp.Tool{
 			Name:        "search_meeting_registrants",
-			Description: "Search for LFX meeting registrants using the query service. Supports filtering by meeting ID or group UID (also known as committee UID) and by registrant name, with paging. You get the registrant list LFX Self Serve shows you: the full list for meetings you organize, the guest list without e-mail for meetings you are registered for, nothing for others.",
+			Description: "Search for LFX meeting registrants using the query service. Supports filtering by meeting ID or group UID (also known as committee UID) and by registrant name, with paging. You get, per meeting_id, the registrant list LFX Self Serve shows you: the full list for meetings you organize, the guest list without e-mail for meetings you are registered for, nothing for others.",
 			Annotations: &mcp.ToolAnnotations{
 				Title:        "Search Meeting Registrants",
 				ReadOnlyHint: true,
@@ -141,7 +150,7 @@ func RegisterSearchMeetingRegistrants(server *mcp.Server, asGroups bool) {
 	}
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "search_meeting_registrants",
-		Description: "Search for LFX meeting registrants using the query service. Supports filtering by meeting ID or committee UID and by registrant name, with paging. You get the registrant list LFX Self Serve shows you: the full list for meetings you organize, the guest list without e-mail for meetings you are registered for, nothing for others.",
+		Description: "Search for LFX meeting registrants using the query service. Supports filtering by meeting ID or committee UID and by registrant name, with paging. You get, per meeting_id, the registrant list LFX Self Serve shows you: the full list for meetings you organize, the guest list without e-mail for meetings you are registered for, nothing for others.",
 		Annotations: &mcp.ToolAnnotations{
 			Title:        "Search Meeting Registrants",
 			ReadOnlyHint: true,
@@ -169,7 +178,7 @@ func RegisterSearchPastMeetingParticipants(server *mcp.Server, asGroups bool) {
 	if asGroups {
 		mcp.AddTool(server, &mcp.Tool{
 			Name:        "search_past_meeting_participants",
-			Description: "Search for LFX past meeting participants using the query service. Filter by past meeting ID (meeting_and_occurrence_id), group UID (also known as committee UID) or project UID, by name, by meeting start date range (date_from/date_to, resolved through the past meetings of that project or group), attended_only, and exact stored org_name. People are de-duplicated by identity like LFX Self Serve: LFX username when both records have one, else e-mail, else normalised name; dedupe=false returns raw records. count_only returns the record count with complete and visibility. Results cover only the meetings and participant records visible to the caller. You get the participant list LFX Self Serve shows you: the full list for past meetings you organize, the hosts' names and your own record for meetings you have access to, only your own record otherwise. truncated_records=true means the search reached the record cap before all meetings were checked.",
+			Description: "Search for LFX past meeting participants using the query service. Filter by past meeting ID (meeting_and_occurrence_id), group UID (also known as committee UID) or project UID, by name, by meeting start date range (date_from/date_to, resolved through the past meetings of that project or group), attended_only, and exact stored org_name. People are de-duplicated by identity like LFX Self Serve: LFX username when both records have one, else e-mail, else normalised name; dedupe=false returns raw records. count_only returns the record count with complete and visibility. Results cover only the meetings and participant records visible to the caller. You get, per past_meeting_id or date range, the participant list LFX Self Serve shows you: the full list for past meetings you organize, the hosts' names and your own record for meetings you have access to, only your own record otherwise. truncated_records=true means the search reached the record cap before all meetings were checked.",
 			Annotations: &mcp.ToolAnnotations{
 				Title:        "Search Past Meeting Participants",
 				ReadOnlyHint: true,
@@ -179,7 +188,7 @@ func RegisterSearchPastMeetingParticipants(server *mcp.Server, asGroups bool) {
 	}
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "search_past_meeting_participants",
-		Description: "Search for LFX past meeting participants using the query service. Filter by past meeting ID (meeting_and_occurrence_id), committee UID or project UID, by name, by meeting start date range (date_from/date_to, resolved through the past meetings of that project or committee), attended_only, and exact stored org_name. People are de-duplicated by identity like LFX Self Serve: LFX username when both records have one, else e-mail, else normalised name; dedupe=false returns raw records. count_only returns the record count with complete and visibility. Results cover only the meetings and participant records visible to the caller. You get the participant list LFX Self Serve shows you: the full list for past meetings you organize, the hosts' names and your own record for meetings you have access to, only your own record otherwise. truncated_records=true means the search reached the record cap before all meetings were checked.",
+		Description: "Search for LFX past meeting participants using the query service. Filter by past meeting ID (meeting_and_occurrence_id), committee UID or project UID, by name, by meeting start date range (date_from/date_to, resolved through the past meetings of that project or committee), attended_only, and exact stored org_name. People are de-duplicated by identity like LFX Self Serve: LFX username when both records have one, else e-mail, else normalised name; dedupe=false returns raw records. count_only returns the record count with complete and visibility. Results cover only the meetings and participant records visible to the caller. You get, per past_meeting_id or date range, the participant list LFX Self Serve shows you: the full list for past meetings you organize, the hosts' names and your own record for meetings you have access to, only your own record otherwise. truncated_records=true means the search reached the record cap before all meetings were checked.",
 		Annotations: &mcp.ToolAnnotations{
 			Title:        "Search Past Meeting Participants",
 			ReadOnlyHint: true,
@@ -640,40 +649,38 @@ func handleSearchMeetingRegistrants(ctx context.Context, req *mcp.CallToolReques
 	logger.InfoContext(ctx, "searching meeting registrants", "meeting_id", args.MeetingID, "committee_uid", args.CommitteeUID, "name", args.Name, "page_size", pageSize)
 
 	// Without full view, the result follows what LFX Self Serve shows the
-	// caller of each meeting (people_visibility_meetings.go). name, which
-	// can probe for a person, is accepted only for one meeting the caller
-	// organizes.
+	// caller of one meeting (people_visibility_meetings.go): meeting_id is
+	// required, since Self Serve has no cross-meeting registrant list for
+	// anyone but a meeting's organizers; the view is decided before the
+	// query, so a meeting that shows the caller nothing is not read at all
+	// and no page token can span its registrants; name, which can probe for
+	// a person, is accepted only when the caller organizes the meeting.
 	fullView := HasFullView(ctx)
 	var views map[string]registrantView
-	if !fullView && args.Name != "" {
-		const refusal = "Error: name is available for one meeting at a time that you organize: set meeting_id to a meeting you organize."
+	if !fullView {
 		if args.MeetingID == "" {
-			return nil, resourceSearchResult{}, toolError(refusal)
+			return nil, resourceSearchResult{}, toolError(registrantScopeRefusal)
 		}
 		views, err = registrantViews(ctx, clients, tokenInfo, []string{args.MeetingID})
 		if err != nil {
 			logger.ErrorContext(ctx, "registrant visibility check failed", "error", err)
 			return nil, resourceSearchResult{}, toolError(peopleVisibilityUnavailableMessage)
 		}
-		if views[args.MeetingID] != registrantOrganizer {
-			return nil, resourceSearchResult{}, toolError(refusal)
+		if args.Name != "" && views[args.MeetingID] != registrantOrganizer {
+			return nil, resourceSearchResult{}, toolError(registrantFilterRefusal)
 		}
 	}
 
-	result, err := clients.QuerySvc.QueryResources(ctx, payload)
-	if err != nil {
-		logger.ErrorContext(ctx, "QueryResources failed", "error", err)
-		return nil, resourceSearchResult{}, toolError(friendlyAPIError("failed to search meeting registrants", err))
+	result := &querysvc.QueryResourcesResult{}
+	if fullView || views[args.MeetingID] != registrantHidden {
+		result, err = clients.QuerySvc.QueryResources(ctx, payload)
+		if err != nil {
+			logger.ErrorContext(ctx, "QueryResources failed", "error", err)
+			return nil, resourceSearchResult{}, toolError(friendlyAPIError("failed to search meeting registrants", err))
+		}
 	}
 
 	if !fullView {
-		if views == nil {
-			views, err = registrantViews(ctx, clients, tokenInfo, dataStrings(result.Resources, "meeting_id"))
-			if err != nil {
-				logger.ErrorContext(ctx, "registrant visibility check failed", "error", err)
-				return nil, resourceSearchResult{}, toolError(peopleVisibilityUnavailableMessage)
-			}
-		}
 		result.Resources = filterRegistrants(result.Resources, views, tokenInfo)
 	}
 

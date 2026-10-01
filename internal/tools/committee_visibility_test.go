@@ -650,13 +650,13 @@ func TestPeopleToolsDescribeTheVisibilityRule(t *testing.T) {
 		{"search_group_members", func(s *mcp.Server) { RegisterSearchCommitteeMembers(s, true) },
 			"You get the member list LFX Self Serve shows you: the list for groups you manage or that share their member list with you, otherwise their chairs."},
 		{"search_meeting_registrants", func(s *mcp.Server) { RegisterSearchMeetingRegistrants(s, false) },
-			"You get the registrant list LFX Self Serve shows you: the full list for meetings you organize, the guest list without e-mail for meetings you are registered for, nothing for others."},
+			"You get, per meeting_id, the registrant list LFX Self Serve shows you: the full list for meetings you organize, the guest list without e-mail for meetings you are registered for, nothing for others."},
 		{"search_meeting_registrants", func(s *mcp.Server) { RegisterSearchMeetingRegistrants(s, true) },
-			"You get the registrant list LFX Self Serve shows you: the full list for meetings you organize, the guest list without e-mail for meetings you are registered for, nothing for others."},
+			"You get, per meeting_id, the registrant list LFX Self Serve shows you: the full list for meetings you organize, the guest list without e-mail for meetings you are registered for, nothing for others."},
 		{"search_past_meeting_participants", func(s *mcp.Server) { RegisterSearchPastMeetingParticipants(s, false) },
-			"You get the participant list LFX Self Serve shows you: the full list for past meetings you organize, the hosts' names and your own record for meetings you have access to, only your own record otherwise."},
+			"You get, per past_meeting_id or date range, the participant list LFX Self Serve shows you: the full list for past meetings you organize, the hosts' names and your own record for meetings you have access to, only your own record otherwise."},
 		{"search_past_meeting_participants", func(s *mcp.Server) { RegisterSearchPastMeetingParticipants(s, true) },
-			"You get the participant list LFX Self Serve shows you: the full list for past meetings you organize, the hosts' names and your own record for meetings you have access to, only your own record otherwise."},
+			"You get, per past_meeting_id or date range, the participant list LFX Self Serve shows you: the full list for past meetings you organize, the hosts' names and your own record for meetings you have access to, only your own record otherwise."},
 	} {
 		t.Run(tc.toolName, func(t *testing.T) {
 			tool := listRegisteredTool(t, tc.toolName, tc.register)

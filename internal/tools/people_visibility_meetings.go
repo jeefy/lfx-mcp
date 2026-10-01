@@ -350,6 +350,31 @@ func projectParticipant(data map[string]any, view participantView, tokenInfo *au
 	return keepFields(data, "uid", "meeting_and_occurrence_id", "first_name", "last_name", "host", "is_attended")
 }
 
+// participantNarrowing returns the filters_or clause that limits a
+// participant query to the records the caller may be shown under view, and
+// whether the query is worth sending at all. An organizer reads the meeting
+// unnarrowed; full access reads the hosts and the caller's own records; own
+// only reads the caller's own records; a caller with neither username nor
+// e-mail can be shown nothing of a meeting they do not organize.
+func participantNarrowing(view participantView, tokenInfo *auth.TokenInfo) (narrow []string, readable bool) {
+	if view == participantOrganizer {
+		return nil, true
+	}
+	if username := callerUsername(tokenInfo); username != "" {
+		narrow = append(narrow, "username:"+username)
+	}
+	if email := callerEmail(tokenInfo); email != "" {
+		narrow = append(narrow, "email:"+email)
+		if lower := strings.ToLower(email); lower != email {
+			narrow = append(narrow, "email:"+lower)
+		}
+	}
+	if view == participantFullAccess {
+		narrow = append([]string{"host:true"}, narrow...)
+	}
+	return narrow, len(narrow) > 0
+}
+
 // selectParticipants is the first of the two passes the participant rule
 // takes over raw records: it drops every record participantShown rejects,
 // with full fields intact, before any de-duplication. Identity matching then

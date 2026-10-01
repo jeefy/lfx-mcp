@@ -179,84 +179,124 @@ func TestSearchMeetingRegistrants_FullViewIsUnchangedAndMakesNoChecks(t *testing
 }
 
 func TestSearchMeetingRegistrants_ViewsPerMeeting(t *testing.T) {
-	api := setupMeetingLookupTest(t)
-	api.GrantRelations("v1_meeting:" + meetingOrganized + "#organizer")
-	api.Respond(resourcesPath, registrantPage("next", meetingOrganized, meetingRegistered, meetingHidden))
-	// A self-registration answer naming the organized meeting (outside the
-	// asked filter) must not lower the organizer's view.
-	api.Respond(resourcesPath, selfRegistrantLookup(meetingRegistered, meetingOrganized))
+	// The three views, one meeting at a time (the only scope a caller
+	// without full view may ask for); the view is decided before the query.
+	t.Run("organizer: unchanged", func(t *testing.T) {
+		api := setupMeetingLookupTest(t)
+		api.GrantRelations("v1_meeting:" + meetingOrganized + "#organizer")
+		api.Respond(resourcesPath, registrantPage("next", meetingOrganized))
+		_, out, err := handleSearchMeetingRegistrants(context.Background(), stubCallToolRequest(), SearchMeetingRegistrantsArgs{MeetingID: meetingOrganized, PageSize: 10})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		// The fixture's own record belongs to another meeting and is outside
+		// the decided scope, so it is not shown.
+		if len(out.Resources) != 1 || out.Resources[0].Data["email"] != "person0@example.test" || out.Resources[0].Data["last_invite_delivery_status"] == nil {
+			t.Errorf("organizer record must be unchanged: %+v", out.Resources)
+		}
+		if out.PageToken != "next" {
+			t.Error("the page token is kept")
+		}
+		reqs := api.RequestsTo(resourcesPath)
+		if len(reqs) != 1 {
+			t.Fatalf("an organizer needs no self lookup, got %d queries", len(reqs))
+		}
+		assertExchangedAuth(t, api.RequestsTo(accessCheckPath)[0])
+	})
+	t.Run("registrant: the join-page roster", func(t *testing.T) {
+		api := setupMeetingLookupTest(t)
+		api.GrantRelations()
+		// A stray self-registration answer naming another meeting must not
+		// change anything.
+		api.Respond(resourcesPath, selfRegistrantLookup(meetingRegistered, meetingOrganized))
+		api.Respond(resourcesPath, registrantPage("next", meetingRegistered))
+		res, out, err := handleSearchMeetingRegistrants(context.Background(), stubCallToolRequest(), SearchMeetingRegistrantsArgs{MeetingID: meetingRegistered, PageSize: 10})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		text := allResultText(t, res)
+		if strings.Contains(text, "person0@example.test") {
+			t.Errorf("an address the rule hides reached the caller:\n%s", text)
+		}
+		if len(out.Resources) != 2 {
+			t.Fatalf("expected the roster record + own record, got %d:\n%s", len(out.Resources), text)
+		}
+		roster := out.Resources[0].Data
+		want := []string{"avatar_url", "committee_uid", "first_name", "host", "job_title", "last_name", "meeting_id", "occurrence", "org_name", "type", "uid"}
+		if keys := sortedKeys(roster); strings.Join(keys, ",") != strings.Join(want, ",") {
+			t.Errorf("roster keys = %v, want %v", keys, want)
+		}
+		if own := out.Resources[1].Data; own["email"] != stubCallerEmail || own["username"] == nil {
+			t.Errorf("the caller's own record must be unchanged: %v", own)
+		}
+		// The self lookup ran first, on the e-mail tag raw and lowercased,
+		// bounded to the meeting; the exchanged token on both calls.
+		lookups := api.RequestsTo(resourcesPath)
+		if len(lookups) != 2 {
+			t.Fatalf("expected the self lookup and the search, got %d", len(lookups))
+		}
+		self := lookups[0]
+		if self.Query.Get("type") != "v1_meeting_registrant" {
+			t.Errorf("self lookup type = %q", self.Query.Get("type"))
+		}
+		if tags := self.Query["tags"]; strings.Join(tags, " ") != "email:"+stubCallerEmail+" email:"+strings.ToLower(stubCallerEmail) {
+			t.Errorf("self lookup tags = %v", tags)
+		}
+		if filters := self.Query["filters_or"]; strings.Join(filters, " ") != "meeting_id:"+meetingRegistered {
+			t.Errorf("self lookup filters_or = %v", filters)
+		}
+		assertExchangedAuth(t, self)
+		assertExchangedAuth(t, api.RequestsTo(accessCheckPath)[0])
+		if len(out.Warnings) == 0 {
+			t.Error("a short page with a token carries the visibility warning")
+		}
+	})
+	t.Run("hidden: nothing, and nothing is read", func(t *testing.T) {
+		api := setupMeetingLookupTest(t)
+		api.GrantRelations()
+		api.Respond(resourcesPath, page(nil, "")) // the self lookup
+		res, out, err := handleSearchMeetingRegistrants(context.Background(), stubCallToolRequest(), SearchMeetingRegistrantsArgs{MeetingID: meetingHidden, PageSize: 1})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(out.Resources) != 0 || out.PageToken != "" {
+			t.Errorf("expected an empty page with no token: %+v", out)
+		}
+		if len(api.RequestsTo(resourcesPath)) != 1 {
+			t.Error("the registrant search must not run for a hidden meeting")
+		}
+		if len(out.Warnings) != 1 || !strings.Contains(out.Warnings[0], "not proof of absence") || strings.Contains(allResultText(t, res), "more pages") {
+			t.Errorf("the empty page carries the standard warning only: %v", out.Warnings)
+		}
+	})
+}
 
-	res, out, err := handleSearchMeetingRegistrants(context.Background(), stubCallToolRequest(), SearchMeetingRegistrantsArgs{PageSize: 10})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+func TestSearchMeetingRegistrants_ScopeWithoutMeetingIsRefused(t *testing.T) {
+	for _, args := range []SearchMeetingRegistrantsArgs{{}, {CommitteeUID: "C1"}, {CommitteeUID: "C1", PageToken: "next"}} {
+		api := setupMeetingLookupTest(t)
+		_, out, err := handleSearchMeetingRegistrants(context.Background(), stubCallToolRequest(), args)
+		if err == nil || err.Error() != registrantScopeRefusal || len(out.Resources) != 0 || len(api.Requests()) != 0 {
+			t.Errorf("%+v: expected the scope refusal before any call, got %v", args, err)
+		}
 	}
-	text := allResultText(t, res)
-	if strings.Contains(text, "person1@example.test") || strings.Contains(text, "person2@example.test") {
-		t.Errorf("an address the rule hides reached the caller:\n%s", text)
-	}
-	if out.PageToken != "next" {
-		t.Error("the page token must be kept")
-	}
-	if len(out.Resources) != 3 {
-		t.Fatalf("expected organizer record + roster record + own record, got %d:\n%s", len(out.Resources), text)
-	}
-	byUID := map[string]map[string]any{}
-	for _, r := range out.Resources {
-		byUID[r.Data["uid"].(string)] = r.Data
-	}
-	if organized := byUID["r0"]; organized["email"] != "person0@example.test" || organized["last_invite_delivery_status"] == nil {
-		t.Errorf("organizer record must be unchanged: %v", organized)
-	}
-	roster := byUID["r1"]
-	want := []string{"avatar_url", "committee_uid", "first_name", "host", "job_title", "last_name", "meeting_id", "occurrence", "org_name", "type", "uid"}
-	if keys := sortedKeys(roster); strings.Join(keys, ",") != strings.Join(want, ",") {
-		t.Errorf("roster keys = %v, want %v", keys, want)
-	}
-	if own := byUID["self"]; own["email"] != stubCallerEmail || own["username"] == nil {
-		t.Errorf("the caller's own record must be unchanged: %v", own)
-	}
-	if _, hidden := byUID["r2"]; hidden {
-		t.Error("the hidden meeting's record must be dropped")
-	}
-	// One access-check for the three meetings, one self lookup for the two
-	// the caller does not organize, on the e-mail tag raw and lowercased.
-	bodies := api.AccessCheckBodies()
-	if len(bodies) != 1 || len(bodies[0]) != 3 {
-		t.Errorf("expected one batch of three organizer checks, got %v", bodies)
-	}
-	assertExchangedAuth(t, api.RequestsTo(accessCheckPath)[0])
-	lookups := api.RequestsTo(resourcesPath)
-	if len(lookups) != 2 {
-		t.Fatalf("expected the search and one self lookup, got %d", len(lookups))
-	}
-	self := lookups[1]
-	if self.Query.Get("type") != "v1_meeting_registrant" {
-		t.Errorf("self lookup type = %q", self.Query.Get("type"))
-	}
-	if tags := self.Query["tags"]; strings.Join(tags, " ") != "email:"+stubCallerEmail+" email:"+strings.ToLower(stubCallerEmail) {
-		t.Errorf("self lookup tags = %v", tags)
-	}
-	if filters := self.Query["filters_or"]; strings.Join(filters, " ") != "meeting_id:"+meetingRegistered+" meeting_id:"+meetingHidden {
-		t.Errorf("self lookup filters_or = %v", filters)
-	}
-	assertExchangedAuth(t, self)
-	if len(out.Warnings) == 0 {
-		t.Error("a short page with a token carries the visibility warning")
+	api := setupMeetingLookupTest(t)
+	api.Respond(resourcesPath, registrantPage("", meetingOrganized, meetingHidden))
+	if _, out, err := handleSearchMeetingRegistrants(fullViewCtx(), stubCallToolRequest(), SearchMeetingRegistrantsArgs{CommitteeUID: "C1"}); err != nil || len(out.Resources) != 3 {
+		t.Fatalf("full view keeps committee-wide pages: %v %d", err, len(out.Resources))
 	}
 }
 
 func TestSearchMeetingRegistrants_NoEmailClaimMeansNoRosterView(t *testing.T) {
 	api := setupMeetingLookupTest(t)
 	api.GrantRelations()
-	api.Respond(resourcesPath, registrantPage("", meetingRegistered))
 	req := stubCallToolRequest()
 	delete(req.Extra.TokenInfo.Extra, ClaimEmail)
 	_, out, err := handleSearchMeetingRegistrants(context.Background(), req, SearchMeetingRegistrantsArgs{MeetingID: meetingRegistered})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(out.Resources) != 0 || len(api.RequestsTo(resourcesPath)) != 1 {
-		t.Errorf("without an e-mail claim nothing is shown and no self lookup runs: %d records, %d queries", len(out.Resources), len(api.RequestsTo(resourcesPath)))
+	if len(out.Resources) != 0 || len(api.RequestsTo(resourcesPath)) != 0 {
+		t.Errorf("without an e-mail claim the meeting is hidden: no self lookup, no search, nothing shown: %d records, %d queries", len(out.Resources), len(api.RequestsTo(resourcesPath)))
 	}
 }
 
@@ -267,11 +307,9 @@ func TestSearchMeetingRegistrants_FailsClosed(t *testing.T) {
 	}{
 		{"access-check 503", func(api *stubLFXAPI) {
 			api.FailAccessCheck(http.StatusServiceUnavailable)
-			api.Respond(resourcesPath, registrantPage("", meetingHidden))
 		}},
 		{"self lookup 502", func(api *stubLFXAPI) {
 			api.GrantRelations()
-			api.Respond(resourcesPath, registrantPage("", meetingHidden))
 			api.RespondStatus(resourcesPath, http.StatusBadGateway, "")
 		}},
 	}
@@ -279,7 +317,7 @@ func TestSearchMeetingRegistrants_FailsClosed(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			api := setupMeetingLookupTest(t)
 			tc.setup(api)
-			_, out, err := handleSearchMeetingRegistrants(context.Background(), stubCallToolRequest(), SearchMeetingRegistrantsArgs{})
+			_, out, err := handleSearchMeetingRegistrants(context.Background(), stubCallToolRequest(), SearchMeetingRegistrantsArgs{MeetingID: meetingHidden})
 			if err == nil || err.Error() != peopleVisibilityUnavailableMessage || len(out.Resources) != 0 {
 				t.Fatalf("expected the unavailable error and no records, got %v %v", err, out.Resources)
 			}
@@ -291,8 +329,8 @@ func TestSearchMeetingRegistrants_NameFilterNeedsAnOrganizedMeeting(t *testing.T
 	t.Run("no meeting_id", func(t *testing.T) {
 		api := setupMeetingLookupTest(t)
 		_, _, err := handleSearchMeetingRegistrants(context.Background(), stubCallToolRequest(), SearchMeetingRegistrantsArgs{CommitteeUID: "C1", Name: "Reg"})
-		if err == nil || !strings.Contains(err.Error(), "meeting_id") || len(api.Requests()) != 0 {
-			t.Fatalf("expected a refusal before any call, got %v", err)
+		if err == nil || err.Error() != registrantScopeRefusal || len(api.Requests()) != 0 {
+			t.Fatalf("expected the scope refusal before any call, got %v", err)
 		}
 	})
 	t.Run("registrant, not organizer", func(t *testing.T) {
@@ -300,8 +338,11 @@ func TestSearchMeetingRegistrants_NameFilterNeedsAnOrganizedMeeting(t *testing.T
 		api.GrantRelations()
 		api.Respond(resourcesPath, selfRegistrantLookup(meetingRegistered))
 		_, _, err := handleSearchMeetingRegistrants(context.Background(), stubCallToolRequest(), SearchMeetingRegistrantsArgs{MeetingID: meetingRegistered, Name: "Reg"})
-		if err == nil || !strings.Contains(err.Error(), "organize") {
-			t.Fatalf("expected a refusal, got %v", err)
+		if err == nil || err.Error() != registrantFilterRefusal {
+			t.Fatalf("expected the filter refusal, got %v", err)
+		}
+		if len(api.RequestsTo(resourcesPath)) != 1 {
+			t.Error("the search must not run when the filter is refused")
 		}
 	})
 	t.Run("organizer passes", func(t *testing.T) {
