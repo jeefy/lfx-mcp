@@ -411,17 +411,17 @@ func peopleCountGate(ctx context.Context, clients *lfxv2.Clients, tokenInfo *aut
 		}
 		return "", nil
 	case meetingResourceType, pastMeetingResourceType:
-		allowed := "filters_or / filters_all on the meeting's own fields (" + strings.Join(meetingCountFilterFields, ", ") + ") and a date_field of " + strings.Join(meetingCountDateFields, ", ")
+		refusal := fmt.Sprintf("Error: counting %s accepts filters_or / filters_all only on the meeting's own fields (%s) and a date_field only of %s.", args.Type, strings.Join(meetingCountFilterFields, ", "), strings.Join(meetingCountDateFields, ", "))
 		for _, filter := range append(append([]string{}, args.FiltersOr...), args.FiltersAll...) {
 			// The query service trims the field name before it applies the
 			// filter, so match the trimmed form.
 			field, _, _ := strings.Cut(filter, ":")
 			if !slices.Contains(meetingCountFilterFields, strings.TrimSpace(field)) {
-				return countRefusal(args.Type, allowed), nil
+				return refusal, nil
 			}
 		}
 		if args.DateField != "" && !slices.Contains(meetingCountDateFields, strings.TrimSpace(args.DateField)) {
-			return countRefusal(args.Type, allowed), nil
+			return refusal, nil
 		}
 		return "", nil
 	}
@@ -430,13 +430,20 @@ func peopleCountGate(ctx context.Context, clients *lfxv2.Clients, tokenInfo *aut
 
 // meetingCountFilterFields are the only data fields a caller without full
 // view may filter v1_meeting and v1_past_meeting counts on: the fields the
-// meeting search tools themselves filter on, plus a record's own flags. An
-// allowlist, so that every field naming a person (created_by, owner,
-// organizers, user_id, updated_by, updated_by_list, registrant counts) and
-// any nested path stays out without being enumerated.
+// meeting search tools themselves filter on, plus a record's own identifiers,
+// schedule and artifact settings (names as the meeting service publishes
+// them, internal/domain/models/event_models.go). An allowlist, so that every
+// field naming a person (created_by, owner, organizers, user_id, updated_by,
+// updated_by_list, registrant counts), every meeting secret (the passwords
+// and the Zoom settings) and any nested path stays out without being
+// enumerated.
 var meetingCountFilterFields = []string{
-	"project_uid", "committee_uid", "meeting_id", "meeting_and_occurrence_id", "occurrence_id",
-	"visibility", "restricted", "meeting_type", "platform", "title",
+	"id", "project_uid", "project_slug", "committee", "committee_uid",
+	"meeting_id", "meeting_and_occurrence_id", "occurrence_id",
+	"visibility", "restricted", "meeting_type", "platform", "title", "duration", "timezone",
+	"is_manually_created", "show_meeting_attendees", "artifact_visibility",
+	"recording_enabled", "recording_access", "transcript_enabled", "transcript_access",
+	"ai_summary_access", "zoom_ai_enabled", "youtube_upload_enabled",
 }
 
 // meetingCountDateFields are the date fields a caller without full view may

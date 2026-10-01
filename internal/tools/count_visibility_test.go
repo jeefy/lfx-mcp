@@ -40,7 +40,13 @@ func runCountGateCases(t *testing.T, api *stubLFXAPI, cases []countArgsCase) {
 			if !res.IsError || counted != 0 {
 				t.Fatalf("expected a refusal before any count, got isError=%v counts=%d: %s", res.IsError, counted, text)
 			}
-			if !strings.Contains(text, tc.args.Type) || !strings.Contains(text, "LFX Self Serve") {
+			// A people type's refusal names the form LFX Self Serve shows;
+			// a meeting type's names the meeting's own fields.
+			form := "LFX Self Serve"
+			if tc.args.Type == meetingResourceType || tc.args.Type == pastMeetingResourceType {
+				form = "the meeting's own fields"
+			}
+			if !strings.Contains(text, tc.args.Type) || !strings.Contains(text, form) {
 				t.Errorf("refusal must name the type and the allowed form: %s", text)
 			}
 			assertNoEmail(t, text)
@@ -102,6 +108,8 @@ func TestCountLFXResources_MeetingFiltersAreAllowlisted(t *testing.T) {
 		{"padded allowed field", CountLFXResourcesArgs{Type: meetingResourceType, FiltersAll: []string{" visibility :public"}}, true},
 		{"date_field on a people path", CountLFXResourcesArgs{Type: meetingResourceType, DateField: "updated_by_list.timestamp", DateFrom: "2026-01-01"}, false},
 		{"date_field on occurrences", CountLFXResourcesArgs{Type: pastMeetingResourceType, DateField: "sessions.start_time", DateTo: "2026-12-31"}, false},
+		{"meeting password", CountLFXResourcesArgs{Type: meetingResourceType, FiltersAll: []string{"password:x"}}, false},
+		{"past meeting password", CountLFXResourcesArgs{Type: pastMeetingResourceType, FiltersOr: []string{"meeting_password:x"}}, false},
 	})
 	// Every allowlisted field and date field is accepted, on both types, and
 	// the refusal names all of them.
@@ -116,6 +124,9 @@ func TestCountLFXResources_MeetingFiltersAreAllowlisted(t *testing.T) {
 	}
 	runCountGateCases(t, api, accepting)
 	res, _, _ := handleCountLFXResources(context.Background(), stubCallToolRequest(), CountLFXResourcesArgs{Type: meetingResourceType, FiltersAll: []string{"owner.email:x@example.test"}})
+	if text := allResultText(t, res); !strings.HasPrefix(text, "Error: counting v1_meeting accepts filters_or / filters_all only on the meeting's own fields") {
+		t.Errorf("a meeting count refusal names the meeting's own fields: %s", text)
+	}
 	for _, field := range append(append([]string{}, meetingCountFilterFields...), meetingCountDateFields...) {
 		if !strings.Contains(allResultText(t, res), field) {
 			t.Errorf("the refusal must name the allowed field %q: %s", field, allResultText(t, res))
