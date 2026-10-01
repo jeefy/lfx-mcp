@@ -24,10 +24,10 @@ managed in LFX Self Serve, as they are today.
 
 You can:
 
-- find projects, and the groups, meetings and mailing lists you take part in or help run;
+- find projects, and the groups, meetings and mailing lists you take part in or have a role on;
 - look up group members, meeting registrants and attendees, under the same access rules as LFX Self Serve;
-- get past meeting summaries, and links to recordings and transcripts, when the meeting shares them with you or
-  you organize the meeting or administer its group or project;
+- get past meeting summaries, and links to recordings and transcripts, when the meeting shares them with you, or
+  you organize the meeting or have a manager or viewer role on its group or project;
 - get counts and overviews across the projects, groups and meetings you can see;
 - see what other projects, groups and meetings have made public, including those in other foundations, as anyone
   signed in to LFX Self Serve can;
@@ -40,10 +40,10 @@ You can:
 
 You cannot:
 
-- see private groups, meetings or mailing lists unless you take part in them or administer the project or group
-  they belong to;
+- see private groups, meetings or mailing lists unless you take part in them or have a manager or viewer role on
+  the project or group they belong to;
 - see a meeting's recording, transcript or summary unless the meeting's settings share it with you, or you
-  organize the meeting or administer its group or project;
+  organize the meeting or have a manager or viewer role on its group or project;
 - see an organization's memberships, key contacts or group seats unless you have a role at that organization, are
   one of its key contacts, or have a manager or viewer role on the project the membership is for;
 - access LFX Insights or other Linux Foundation analytics and reporting data;
