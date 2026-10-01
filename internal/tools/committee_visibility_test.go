@@ -646,9 +646,9 @@ func TestPeopleToolsDescribeTheVisibilityRule(t *testing.T) {
 		want     string
 	}{
 		{"search_committee_members", func(s *mcp.Server) { RegisterSearchCommitteeMembers(s, false) },
-			"You get the member list LFX Self Serve shows you: the full list for committees you manage, otherwise their chairs."},
+			"You get the member list LFX Self Serve shows you: the list for committees you manage or that share their member list with you, otherwise their chairs."},
 		{"search_group_members", func(s *mcp.Server) { RegisterSearchCommitteeMembers(s, true) },
-			"You get the member list LFX Self Serve shows you: the full list for groups you manage, otherwise their chairs."},
+			"You get the member list LFX Self Serve shows you: the list for groups you manage or that share their member list with you, otherwise their chairs."},
 		{"search_meeting_registrants", func(s *mcp.Server) { RegisterSearchMeetingRegistrants(s, false) },
 			"You get the registrant list LFX Self Serve shows you: the full list for meetings you organize, the guest list without e-mail for meetings you are registered for, nothing for others."},
 		{"search_meeting_registrants", func(s *mcp.Server) { RegisterSearchMeetingRegistrants(s, true) },
