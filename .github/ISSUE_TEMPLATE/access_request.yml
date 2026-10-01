@@ -99,4 +99,4 @@ body:
       label: AI client(s)
       description: Select all that apply. Not listed? Pick Other and name it in "What you plan to do with it" above.
       multiple: true
-      options: [Claude, Cursor, Goose, OpenCode, Zed, ChatGPT, Other]
+      options: [Claude, Cursor, Goose, OpenCode, Visual Studio Code, Zed, ChatGPT, Other]

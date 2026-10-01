@@ -58,8 +58,8 @@ are not available to non-staff community accounts.
 
 Open a new issue in this repository with the
 [LFX MCP access request](https://github.com/linuxfoundation/lfx-mcp/issues/new?template=access_request.yml)
-form. It asks whether to grant or remove access, the LFID username, and what you plan to do with the assistant;
-the rest is optional.
+form. It asks what you're requesting (read, write, or a removal), the scope and location it applies to, the LFID
+username, and what you plan to do with the assistant; the rest is optional.
 
 **This repository, and the issue you file, are public.** Do not include passwords, tokens, or any private or
 confidential project, meeting or member information in the request — a public name, your LFID, and a general
@@ -101,9 +101,3 @@ your issue.
 
 Comment on your issue. For account problems, use
 [support.linuxfoundation.org](https://support.linuxfoundation.org). Please do not post access requests in Slack.
-
-## Appendix: sponsoring and removing access
-
-For chairs, administrators and executive directors. We may ask someone in the requester's committee to confirm
-their participation; do that by commenting on the issue, or open the form on the person's behalf. To remove
-someone's access, open the form and choose **Remove access**.
