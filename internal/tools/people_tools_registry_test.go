@@ -504,6 +504,34 @@ func TestPeopleTools_FullViewIsUnchangedWithoutPredicateCalls(t *testing.T) {
 	}
 }
 
+// TestPeopleTools_FullViewCallsMatchMain runs the calls in fullViewCallCases
+// as a caller with full view: the output and the upstream requests match,
+// byte for byte, what origin/main's handlers produced for them (goldens in
+// testdata/people_full_view, generated at origin/main 6eeebb2 from the same
+// cases file), and no predicate call is made.
+func TestPeopleTools_FullViewCallsMatchMain(t *testing.T) {
+	for _, tc := range fullViewCallCases {
+		t.Run(tc.name, func(t *testing.T) {
+			api := tc.setup(t)
+			res, out, err := tc.call(fullViewCtx())
+			if err != nil || res == nil || res.IsError {
+				t.Fatalf("unexpected failure: %v %s", err, allResultText(t, res))
+			}
+			assertGoldenOutput(t, tc.name, res, out)
+			want, err := os.ReadFile(filepath.Join("testdata", "people_full_view", tc.name+".requests.txt"))
+			if err != nil {
+				t.Fatalf("golden missing: %v", err)
+			}
+			if got := fullViewRequestLog(api); got != string(want) {
+				t.Errorf("full-view upstream requests differ from origin/main's:\n--- want\n%s--- got\n%s", want, got)
+			}
+			if n := predicateRequests(api); n != 0 {
+				t.Errorf("full view made %d predicate calls", n)
+			}
+		})
+	}
+}
+
 // TestPeopleTools_MissingFlagBehavesAsNoFullView walks the registry with a
 // bare context: the outcome matches the denied caller, never the full view.
 func TestPeopleTools_MissingFlagBehavesAsNoFullView(t *testing.T) {

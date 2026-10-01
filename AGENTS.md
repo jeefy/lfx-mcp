@@ -325,8 +325,12 @@ registers must be either in `PeopleToolNames` or declared with its reason in
 `PeopleToolNames` has a registry entry. The full-view walk compares each
 tool's output byte for byte with goldens in
 `internal/tools/testdata/people_full_view/`, generated from the handlers at
-`origin/main` before this rule existed; regenerate a golden only from a
-checkout that predates the people rules, never from the branch under test.
+`origin/main` before this rule existed; `fullViewCallCases`
+(`people_full_view_cases_test.go`, which uses only helpers that existed
+there) adds the counts, `count_only`, date-range, project-scope and
+filtered calls, with their upstream requests. Regenerate a golden only from
+a checkout that predates the people rules, never from the branch under
+test.
 
 ### Tool Implementation Steps
 
