@@ -228,10 +228,10 @@ func handleGetCommitteeGroupMode(ctx context.Context, req *mcp.CallToolRequest, 
 
 // handleGetCommitteeMemberGroupMode adapts group-mode args to the committee member handler.
 func handleGetCommitteeMemberGroupMode(ctx context.Context, req *mcp.CallToolRequest, args GetGroupMemberArgs) (*mcp.CallToolResult, *committeeservice.CommitteeMemberFullWithReadonlyAttributes, error) {
-	return handleGetCommitteeMember(ctx, req, GetCommitteeMemberArgs{
+	return getCommitteeMember(ctx, req, GetCommitteeMemberArgs{
 		CommitteeUID: args.GroupUID,
 		MemberUID:    args.MemberUID,
-	})
+	}, "group member")
 }
 
 // handleSearchCommitteeMembersGroupMode adapts group-mode args to the
@@ -389,6 +389,14 @@ func handleGetCommittee(ctx context.Context, req *mcp.CallToolRequest, args GetC
 		committeeSettings = settingsResult.CommitteeSettings
 	}
 
+	// No LFX Self Serve group page renders the writer and auditor lists or
+	// the reviewer; without full view they are left out.
+	if committeeSettings != nil && !HasFullView(ctx) {
+		committeeSettings.Writers = nil
+		committeeSettings.Auditors = nil
+		committeeSettings.LastReviewedBy = nil
+	}
+
 	out := committeeGetResult{
 		Base:     baseResult.CommitteeBase,
 		Settings: committeeSettings,
@@ -415,6 +423,12 @@ func handleGetCommittee(ctx context.Context, req *mcp.CallToolRequest, args GetC
 
 // handleGetCommitteeMember implements the get_committee_member tool logic.
 func handleGetCommitteeMember(ctx context.Context, req *mcp.CallToolRequest, args GetCommitteeMemberArgs) (*mcp.CallToolResult, *committeeservice.CommitteeMemberFullWithReadonlyAttributes, error) {
+	return getCommitteeMember(ctx, req, args, "committee member")
+}
+
+// getCommitteeMember is the shared lookup implementation; memberLabel names
+// the record ("committee member" or "group member") in user-facing text.
+func getCommitteeMember(ctx context.Context, req *mcp.CallToolRequest, args GetCommitteeMemberArgs, memberLabel string) (*mcp.CallToolResult, *committeeservice.CommitteeMemberFullWithReadonlyAttributes, error) {
 	logger := newToolLogger(ctx, req)
 
 	if committeeConfig == nil {
@@ -452,6 +466,20 @@ func handleGetCommitteeMember(ctx context.Context, req *mcp.CallToolRequest, arg
 	if err != nil {
 		logger.ErrorContext(ctx, "GetCommitteeMember failed", "error", err, "committee_uid", args.CommitteeUID, "member_uid", args.MemberUID)
 		return nil, nil, toolError(friendlyAPIError("failed to get committee member", err))
+	}
+
+	// Without full view, the record follows what LFX Self Serve shows the
+	// caller of this group; a record it does not show reads like one that
+	// is not visible at all.
+	if !HasFullView(ctx) {
+		views, err := groupRosterViews(ctx, clients, tokenInfo, []string{args.CommitteeUID})
+		if err != nil {
+			logger.ErrorContext(ctx, "group roster visibility check failed", "error", err)
+			return nil, nil, toolError(peopleVisibilityUnavailableMessage)
+		}
+		if !projectCommitteeMemberRecord(result.Member, views[args.CommitteeUID]) {
+			return nil, nil, toolError(lookupNotVisibleMessage(memberLabel, args.MemberUID))
+		}
 	}
 
 	prettyJSON, err := json.MarshalIndent(result.Member, "", "  ")
@@ -537,10 +565,42 @@ func searchCommitteeMembers(ctx context.Context, req *mcp.CallToolRequest, args 
 
 	logger.InfoContext(ctx, "searching committee members", "committee_uid", args.CommitteeUID, "project_uid", args.ProjectUID, "organization_name", args.OrganizationName, "name", args.Name, "page_size", pageSize)
 
+	// Without full view, the result follows what LFX Self Serve shows the
+	// caller of each group (people_visibility.go). A filter that can probe
+	// for a person is accepted only for one group whose member list is shown.
+	fullView := HasFullView(ctx)
+	var views map[string]rosterView
+	if !fullView && (args.Name != "" || args.OrganizationName != "") {
+		singular, uidArg := committeeTerms(committeeNoun)
+		refusal := fmt.Sprintf("Error: name and organization_name are available for one %s at a time whose member list LFX Self Serve shows you: set %s to a %s you manage, or one you audit and belong to with member profiles visible.", singular, uidArg, singular)
+		if args.CommitteeUID == "" {
+			return nil, resourceSearchResult{}, toolError(refusal)
+		}
+		views, err = groupRosterViews(ctx, clients, tokenInfo, []string{args.CommitteeUID})
+		if err != nil {
+			logger.ErrorContext(ctx, "group roster visibility check failed", "error", err)
+			return nil, resourceSearchResult{}, toolError(peopleVisibilityUnavailableMessage)
+		}
+		if views[args.CommitteeUID] == rosterChairsOnly {
+			return nil, resourceSearchResult{}, toolError(refusal)
+		}
+	}
+
 	result, err := clients.QuerySvc.QueryResources(ctx, payload)
 	if err != nil {
 		logger.ErrorContext(ctx, "QueryResources failed", "error", err)
 		return nil, resourceSearchResult{}, toolError(friendlyAPIError("failed to search committee members", err))
+	}
+
+	if !fullView {
+		if views == nil {
+			views, err = groupRosterViews(ctx, clients, tokenInfo, dataStrings(result.Resources, "committee_uid"))
+			if err != nil {
+				logger.ErrorContext(ctx, "group roster visibility check failed", "error", err)
+				return nil, resourceSearchResult{}, toolError(peopleVisibilityUnavailableMessage)
+			}
+		}
+		result.Resources = filterCommitteeMembers(result.Resources, views)
 	}
 
 	out := newResourceSearchResult(resourceNoun, result, pageSize, args.PageToken != "")
@@ -563,6 +623,15 @@ func searchCommitteeMembers(ctx context.Context, req *mcp.CallToolRequest, args 
 			&mcp.TextContent{Text: string(prettyJSON)},
 		},
 	}, out, nil
+}
+
+// committeeTerms returns the singular noun and the UID argument name of the
+// tool surface that committeeNoun ("committees" or "groups") belongs to.
+func committeeTerms(committeeNoun string) (singular, uidArg string) {
+	if committeeNoun == "groups" {
+		return "group", "group_uid"
+	}
+	return "committee", "committee_uid"
 }
 
 // rosterCoverageNote returns the roster-coverage note for a genuinely empty

@@ -1,0 +1,353 @@
+// Copyright The Linux Foundation and contributors.
+// SPDX-License-Identifier: MIT
+
+// Package tools provides MCP tool implementations for the LFX MCP server.
+//
+// This file holds the rules that make people data match what LFX Self Serve
+// shows on screen to a caller without full view (see full_view.go): the
+// predicates, evaluated with the caller's own exchanged token, and the
+// projections that reduce or drop records. Handlers call them after the
+// upstream query; a caller with full view never reaches them. The rules only
+// ever remove records or fields, never add any.
+package tools
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"net/http"
+	"strings"
+
+	"github.com/linuxfoundation/lfx-mcp/internal/lfxv2"
+	committeeservice "github.com/linuxfoundation/lfx-v2-committee-service/gen/committee_service"
+	querysvc "github.com/linuxfoundation/lfx-v2-query-service/gen/query_svc"
+	"github.com/modelcontextprotocol/go-sdk/auth"
+)
+
+// peopleVisibilityUnavailableMessage is the tool error returned when a
+// predicate call fails for a caller without full view. The tool returns no
+// records with it: an empty page next to a failure would read as absence.
+const peopleVisibilityUnavailableMessage = "Error: could not confirm what LFX Self Serve shows you for this request; try again."
+
+// errPeopleVisibilityCap is returned when a predicate lookup needed more
+// pages than peopleLookupMaxPages; the caller fails closed.
+var errPeopleVisibilityCap = errors.New("visibility lookup exceeded its page cap")
+
+// peopleLookupPageSize is the page size of the predicate lookups.
+const peopleLookupPageSize = 100
+
+// peopleLookupMaxPages caps every predicate lookup's page_token loop.
+const peopleLookupMaxPages = 10
+
+// --- field projection ---
+
+// keepFields returns a new map holding only the listed paths of data. A path
+// is a top-level key, or "key.subkey" to keep one field of a nested object
+// (several subkeys of the same key are collected into one nested map).
+// Missing paths are skipped.
+func keepFields(data map[string]any, paths ...string) map[string]any {
+	out := make(map[string]any, len(paths))
+	for _, path := range paths {
+		key, sub, nested := strings.Cut(path, ".")
+		value, ok := data[key]
+		if !ok {
+			continue
+		}
+		if !nested {
+			out[key] = value
+			continue
+		}
+		obj, ok := value.(map[string]any)
+		if !ok {
+			continue
+		}
+		subValue, ok := obj[sub]
+		if !ok {
+			continue
+		}
+		target, _ := out[key].(map[string]any)
+		if target == nil {
+			target = make(map[string]any, 2)
+			out[key] = target
+		}
+		target[sub] = subValue
+	}
+	return out
+}
+
+// resourceData returns the resource's Data as an object, or nil.
+func resourceData(r *querysvc.Resource) map[string]any {
+	if r == nil {
+		return nil
+	}
+	data, _ := r.Data.(map[string]any)
+	return data
+}
+
+// dataString returns data[key] as a string, or "".
+func dataString(data map[string]any, key string) string {
+	v, _ := data[key].(string)
+	return v
+}
+
+// --- groups (committee members) ---
+
+// rosterView is what LFX Self Serve shows a caller of one group's members.
+type rosterView int
+
+const (
+	// rosterChairsOnly is every viewer's Overview tab: the Chair and Vice
+	// Chair names and roles, nothing else.
+	rosterChairsOnly rosterView = iota
+	// rosterBasicProfile is the Members tab for an auditor who is also a
+	// member of a group whose member_visibility is basic_profile.
+	rosterBasicProfile
+	// rosterFull is a writer's view: records unchanged.
+	rosterFull
+)
+
+// groupRosterViews decides the rosterView of each committee UID for the
+// caller, with the caller's token: one access-check batch for writer and
+// auditor, then, for groups where the caller audits but does not write, the
+// caller's own membership (one committee_member query on the username tag)
+// and the group's settings read as the caller (a 403 or 404 means the list
+// is not shown). Any other failure is returned and the caller fails closed.
+func groupRosterViews(ctx context.Context, clients *lfxv2.Clients, tokenInfo *auth.TokenInfo, committeeUIDs []string) (map[string]rosterView, error) {
+	views := make(map[string]rosterView, len(committeeUIDs))
+	uids := dedupeStrings(committeeUIDs)
+	if len(uids) == 0 {
+		return views, nil
+	}
+	reqs := make([]string, 0, 2*len(uids))
+	for _, uid := range uids {
+		reqs = append(reqs, "committee:"+uid+"#writer", "committee:"+uid+"#auditor")
+	}
+	relations, err := clients.CheckRelations(ctx, reqs)
+	if err != nil {
+		return nil, err
+	}
+	var auditorOnly []string
+	for _, uid := range uids {
+		switch {
+		case relations["committee:"+uid+"#writer"]:
+			views[uid] = rosterFull
+		case relations["committee:"+uid+"#auditor"]:
+			views[uid] = rosterChairsOnly
+			auditorOnly = append(auditorOnly, uid)
+		default:
+			views[uid] = rosterChairsOnly
+		}
+	}
+	if len(auditorOnly) == 0 {
+		return views, nil
+	}
+	username := callerUsername(tokenInfo)
+	if username == "" {
+		return views, nil
+	}
+	memberOf, err := callerCommitteeMemberships(ctx, clients, username)
+	if err != nil {
+		return nil, err
+	}
+	for _, uid := range auditorOnly {
+		if !memberOf[uid] {
+			continue
+		}
+		settings, err := clients.Committee.GetCommitteeSettings(ctx, &committeeservice.GetCommitteeSettingsPayload{UID: strPtr(uid)})
+		if err != nil {
+			switch lfxv2.UpstreamStatus(err) {
+			case http.StatusForbidden, http.StatusNotFound:
+				continue
+			}
+			return nil, err
+		}
+		if settings != nil && settings.CommitteeSettings != nil && settings.CommitteeSettings.MemberVisibility == "basic_profile" {
+			views[uid] = rosterBasicProfile
+		}
+	}
+	return views, nil
+}
+
+// callerCommitteeMemberships returns the committee UIDs the caller holds a
+// member record in, from one committee_member query on the username tag (the
+// check LFX Self Serve itself makes), as the caller.
+func callerCommitteeMemberships(ctx context.Context, clients *lfxv2.Clients, username string) (map[string]bool, error) {
+	resourceType := committeeMemberResourceType
+	memberOf := make(map[string]bool)
+	var pageToken *string
+	for pages := 0; ; pages++ {
+		if pages >= peopleLookupMaxPages {
+			return nil, errPeopleVisibilityCap
+		}
+		result, err := clients.QuerySvc.QueryResources(ctx, &querysvc.QueryResourcesPayload{
+			Version:   "1",
+			Type:      &resourceType,
+			TagsAll:   []string{"username:" + username},
+			PageSize:  peopleLookupPageSize,
+			Sort:      "name_asc",
+			PageToken: pageToken,
+		})
+		if err != nil {
+			return nil, err
+		}
+		for _, r := range result.Resources {
+			if uid := dataString(resourceData(r), "committee_uid"); uid != "" {
+				memberOf[uid] = true
+			}
+		}
+		if !hasPageToken(result.PageToken) {
+			return memberOf, nil
+		}
+		pageToken = result.PageToken
+	}
+}
+
+// committeeChairRoles are the role names every viewer of a group sees on its
+// Overview tab.
+var committeeChairRoles = map[string]struct{}{"Chair": {}, "Vice Chair": {}}
+
+// committeeMemberRoleName returns the record's role.name, or "".
+func committeeMemberRoleName(data map[string]any) string {
+	role, _ := data["role"].(map[string]any)
+	return dataString(role, "name")
+}
+
+// projectCommitteeMember reduces one committee_member record to the view.
+// ok is false when the record is not shown at all.
+func projectCommitteeMember(data map[string]any, view rosterView) (out map[string]any, ok bool) {
+	switch view {
+	case rosterFull:
+		return data, true
+	case rosterBasicProfile:
+		return keepFields(data,
+			"uid", "committee_uid", "committee_name", "committee_category",
+			"first_name", "last_name", "email",
+			"organization.name", "organization.website",
+			"role.name", "voting.status",
+		), true
+	}
+	if _, chair := committeeChairRoles[committeeMemberRoleName(data)]; !chair {
+		return nil, false
+	}
+	return keepFields(data, "uid", "committee_uid", "committee_name", "first_name", "last_name", "role.name"), true
+}
+
+// projectCommitteeMemberRecord applies projectCommitteeMember to the typed
+// record the committee service returns, in place. ok is false when the record
+// is not shown at all.
+func projectCommitteeMemberRecord(m *committeeservice.CommitteeMemberFullWithReadonlyAttributes, view rosterView) bool {
+	if m == nil {
+		return false
+	}
+	if view == rosterFull {
+		return true
+	}
+	roleName := ""
+	if m.Role != nil {
+		roleName = m.Role.Name
+	}
+	if view == rosterChairsOnly {
+		if _, chair := committeeChairRoles[roleName]; !chair {
+			return false
+		}
+	}
+	// Fields no on-screen view carries.
+	m.Username, m.JobTitle, m.LinkedinProfile = nil, nil, nil
+	m.AppointedBy, m.Status = "", ""
+	m.CreatedAt, m.UpdatedAt = nil, nil
+	if m.Role != nil {
+		m.Role.StartDate, m.Role.EndDate = nil, nil
+	}
+	if m.Voting != nil {
+		m.Voting.StartDate, m.Voting.EndDate = nil, nil
+	}
+	if m.Organization != nil {
+		m.Organization.ID = nil
+	}
+	if view == rosterChairsOnly {
+		m.CommitteeCategory, m.Email = nil, nil
+		m.Voting, m.Organization = nil, nil
+	}
+	return true
+}
+
+// filterCommitteeMembers applies the roster rule to a page of committee_member
+// resources, returning the records shown. views must cover every
+// committee_uid on the page; a record without one is not shown.
+func filterCommitteeMembers(resources []*querysvc.Resource, views map[string]rosterView) []*querysvc.Resource {
+	out := make([]*querysvc.Resource, 0, len(resources))
+	for _, r := range resources {
+		data := resourceData(r)
+		uid := dataString(data, "committee_uid")
+		view, known := views[uid]
+		if data == nil || !known {
+			continue
+		}
+		projected, ok := projectCommitteeMember(data, view)
+		if !ok {
+			continue
+		}
+		out = append(out, &querysvc.Resource{Type: r.Type, ID: r.ID, Data: projected})
+	}
+	return out
+}
+
+// dataStrings collects the distinct non-empty values of key across a page.
+func dataStrings(resources []*querysvc.Resource, key string) []string {
+	var out []string
+	for _, r := range resources {
+		if v := dataString(resourceData(r), key); v != "" {
+			out = append(out, v)
+		}
+	}
+	return dedupeStrings(out)
+}
+
+// --- count_lfx_resources ---
+
+// peopleCountGate decides whether a count_lfx_resources call on a people
+// type is one LFX Self Serve shows the caller. It returns the refusal text,
+// or "" to proceed. Types that are not people records pass unchanged.
+//
+//   - committee_member: member counts are on every group page. Allowed with
+//     a committee: or project: parent and committee_uid:, project_uid:,
+//     committee_category: or voting_status: tags; nothing that names a
+//     person (name, filters_or, filters_all, other tags) and no date range.
+func peopleCountGate(args CountLFXResourcesArgs) string {
+	hasPersonFilter := args.Name != "" || len(args.FiltersOr) > 0 || len(args.FiltersAll) > 0
+	hasDateRange := args.DateField != "" || args.DateFrom != "" || args.DateTo != ""
+	switch args.Type {
+	case committeeMemberResourceType:
+		allowed := "an optional committee:<uid> or project:<uid> parent and committee_uid:, project_uid:, committee_category: or voting_status: tags only"
+		parentOK := args.Parent == "" || strings.HasPrefix(args.Parent, "committee:") || strings.HasPrefix(args.Parent, "project:")
+		tagPrefixes := []string{"committee_uid:", "project_uid:", "committee_category:", "voting_status:"}
+		if hasPersonFilter || hasDateRange || !parentOK ||
+			!tagsHaveOnlyPrefixes(args.Tags, tagPrefixes...) || !tagsHaveOnlyPrefixes(args.TagsAll, tagPrefixes...) {
+			return countRefusal(args.Type, allowed)
+		}
+	}
+	return ""
+}
+
+// countRefusal is the tool error refusing a count of a people type for a
+// caller without full view; allowed names the accepted form.
+func countRefusal(resourceType, allowed string) string {
+	return fmt.Sprintf("Error: counting %s is available in the form LFX Self Serve shows you: %s.", resourceType, allowed)
+}
+
+// tagsHaveOnlyPrefixes reports whether every tag starts with one of prefixes.
+func tagsHaveOnlyPrefixes(tags []string, prefixes ...string) bool {
+	for _, tag := range tags {
+		ok := false
+		for _, p := range prefixes {
+			if strings.HasPrefix(tag, p) {
+				ok = true
+				break
+			}
+		}
+		if !ok {
+			return false
+		}
+	}
+	return true
+}

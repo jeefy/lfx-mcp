@@ -178,6 +178,16 @@ func handleCountLFXResources(ctx context.Context, req *mcp.CallToolRequest, args
 
 	clients := projectConfig.Clients
 
+	// Without full view, counts of people types are limited to the forms
+	// LFX Self Serve shows the caller (people_visibility.go): a filter that
+	// can single out a person is refused, and a per-meeting count needs the
+	// view that shows that meeting's count on screen.
+	if !HasFullView(ctx) {
+		if refusal := peopleCountGate(args); refusal != "" {
+			return errorResult(refusal), nil, nil
+		}
+	}
+
 	payload := buildCountPayload(args)
 
 	logger.InfoContext(ctx, "counting resources", "type", args.Type, "parent", args.Parent, "date_field", args.DateField)
