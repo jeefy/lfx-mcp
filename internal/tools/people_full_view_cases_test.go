@@ -23,6 +23,9 @@ type fullViewCallCase struct {
 	name  string
 	setup func(t *testing.T) *stubLFXAPI
 	call  func(ctx context.Context) (*mcp.CallToolResult, any, error)
+	// wantError marks a call whose expected output is a tool error; its
+	// text is compared like any other output.
+	wantError bool
 }
 
 const fullViewMemberDoc = `{
@@ -61,6 +64,26 @@ const fullViewRegistrantDoc = `{
 }`
 
 var fullViewCallCases = []fullViewCallCase{
+	{
+		name:      "search_past_meeting_participants.date_range_without_scope",
+		setup:     setupParticipantTest,
+		wantError: true,
+		call: func(ctx context.Context) (*mcp.CallToolResult, any, error) {
+			return handleSearchPastMeetingParticipants(ctx, stubCallToolRequest(), SearchPastMeetingParticipantsArgs{DateFrom: "2026-06-01"})
+		},
+	},
+	{
+		// No token at all: the max_meetings bound is checked before
+		// authentication, so it is the error returned.
+		name:      "search_past_meeting_participants.max_meetings_without_token",
+		setup:     setupParticipantTest,
+		wantError: true,
+		call: func(ctx context.Context) (*mcp.CallToolResult, any, error) {
+			return handleSearchPastMeetingParticipants(ctx, &mcp.CallToolRequest{}, SearchPastMeetingParticipantsArgs{
+				ProjectUID: "P1", DateFrom: "2026-06-01", MaxMeetings: 201,
+			})
+		},
+	},
 	{
 		name: "count_lfx_resources.committee_member_email",
 		setup: func(t *testing.T) *stubLFXAPI {

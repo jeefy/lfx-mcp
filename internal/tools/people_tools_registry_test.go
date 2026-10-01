@@ -514,8 +514,8 @@ func TestPeopleTools_FullViewCallsMatchMain(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			api := tc.setup(t)
 			res, out, err := tc.call(fullViewCtx())
-			if err != nil || res == nil || res.IsError {
-				t.Fatalf("unexpected failure: %v %s", err, allResultText(t, res))
+			if err != nil || res == nil || res.IsError != tc.wantError {
+				t.Fatalf("unexpected outcome (want error %v): %v %s", tc.wantError, err, allResultText(t, res))
 			}
 			assertGoldenOutput(t, tc.name, res, out)
 			want, err := os.ReadFile(filepath.Join("testdata", "people_full_view", tc.name+".requests.txt"))
