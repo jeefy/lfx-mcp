@@ -410,6 +410,25 @@ func TestSearchCommitteeMembers_RefusesPersonFiltersWithoutShownList(t *testing.
 			t.Error("the search must not run when the filter is refused")
 		}
 	})
+	t.Run("roster-shown group passes", func(t *testing.T) {
+		// An auditor who is a member of a basic_profile group sees the
+		// Members tab, so the filters are open to them as to a writer.
+		api := setupCommitteeTest(t)
+		api.GrantRelations("committee:" + committeeAuditorUID + "#auditor")
+		api.Respond(resourcesPath, callerMembershipPage(committeeAuditorUID)) // membership, during the up-front check
+		api.Respond("/committees/"+committeeAuditorUID+"/settings", committeeSettingsRecord(committeeAuditorUID, "basic_profile"))
+		api.Respond(resourcesPath, rosterPage(committeeAuditorUID)) // the search
+		_, out, err := handleSearchCommitteeMembers(context.Background(), stubCallToolRequest(), SearchCommitteeMembersArgs{CommitteeUID: committeeAuditorUID, Name: "Pat"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(out.Resources) != 2 || out.Resources[1].Data["email"] == nil || out.Resources[1].Data["job_title"] != nil {
+			t.Errorf("expected the Members-tab projection of the whole page, got %+v", out.Resources)
+		}
+		if n := len(api.RequestsTo(accessCheckPath)); n != 1 {
+			t.Errorf("the up-front view must be reused for the page, got %d checks", n)
+		}
+	})
 	t.Run("writer group passes and checks once", func(t *testing.T) {
 		api := setupCommitteeTest(t)
 		api.GrantRelations("committee:" + committeeWriterUID + "#writer")
