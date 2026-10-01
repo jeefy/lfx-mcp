@@ -46,12 +46,8 @@ rather than treating it as an MCP access problem.
 
 **You cannot:**
 
-- see private committees, meetings or mailing lists unless you take part in them or have a manager or viewer role
-  on the project or committee they belong to;
-- see a meeting's recording, transcript or summary unless the meeting's settings share it with you, or you
-  organize the meeting or have a manager or viewer role on its committee or project;
-- see an organization's memberships, key contacts or committee seats unless you have a role at that organization, are
-  one of its key contacts, or have a manager or viewer role on the project the membership is for;
+- see a private committee, meeting, mailing list, or organization's membership data unless you take part in it,
+  or have been granted explicit access to the project or committee it belongs to;
 - access LFX Insights or other Linux Foundation analytics and reporting data;
 - make changes your LFX roles do not allow.
 
