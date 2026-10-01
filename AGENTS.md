@@ -293,13 +293,18 @@ yet (product decisions pending); `nonPeopleTools` in
   the caller's identity and, where hosts are shown, `host:true`;
   `participantNarrowing`) or skipped altogether when the view shows nothing
   — so a `page_token` never spans records the caller is not shown and paging
-  cannot count them. The post-query selection stays as a second check.
+  cannot count them. A search of one group follows the same order: the
+  view is decided first, and a group whose member list is not shown is read
+  as its chairs only (`committeeChairFilters`). The post-query selection
+  stays as a second check.
 - **Refuse filters that can probe for a person** (`name`, `org_name`,
   e-mail or username tags, `filters_or` / `filters_all` on people fields)
   wherever the rule would not show the caller that list, with a tool error
   that names the allowed form. For groups, `name` also matches the username,
   which the Members tab never shows, so it is accepted only from a group's
-  writers; `organization_name` from anyone shown the member list.
+  writers; `organization_name` from anyone shown the member list. Over a
+  whole project both need `writer_guard` on the project, from which every
+  group's `writer` derives (`managesProjectGroups`).
   `count_lfx_resources` applies the same gate per people type
   (`peopleCountGate`): for `v1_meeting` and `v1_past_meeting` it accepts
   `filters_or` / `filters_all` only on an allowlist of the record's own

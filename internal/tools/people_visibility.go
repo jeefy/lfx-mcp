@@ -207,6 +207,32 @@ func callerCommitteeMemberships(ctx context.Context, clients *lfxv2.Clients, use
 // Overview tab.
 var committeeChairRoles = map[string]struct{}{"Chair": {}, "Vice Chair": {}}
 
+// committeeChairFilters is the filters_or clause that narrows a
+// committee_member query to the records rosterChairsOnly shows.
+func committeeChairFilters() []string {
+	filters := make([]string, 0, len(committeeChairRoles))
+	for role := range committeeChairRoles {
+		filters = append(filters, "role.name:"+role)
+	}
+	slices.Sort(filters)
+	return filters
+}
+
+// managesProjectGroups reports whether the caller writes every group of a
+// project (committee#writer derives from writer_guard on the group's
+// project), checked as the caller. An empty projectUID is never managed.
+func managesProjectGroups(ctx context.Context, clients *lfxv2.Clients, projectUID string) (bool, error) {
+	if projectUID == "" {
+		return false, nil
+	}
+	relation := "project:" + projectUID + "#writer_guard"
+	relations, err := clients.CheckRelations(ctx, []string{relation})
+	if err != nil {
+		return false, err
+	}
+	return relations[relation], nil
+}
+
 // committeeMemberRoleName returns the record's role.name, or "".
 func committeeMemberRoleName(data map[string]any) string {
 	role, _ := data["role"].(map[string]any)
@@ -234,14 +260,15 @@ func projectCommitteeMember(data map[string]any, view rosterView) (out map[strin
 }
 
 // projectCommitteeMemberRecord applies projectCommitteeMember to the typed
-// record the committee service returns, in place. ok is false when the record
-// is not shown at all.
-func projectCommitteeMemberRecord(m *committeeservice.CommitteeMemberFullWithReadonlyAttributes, view rosterView) bool {
+// record the committee service returns. It builds a new record from the
+// fields the view shows, so a field the service adds later is never
+// returned by default. ok is false when the record is not shown at all.
+func projectCommitteeMemberRecord(m *committeeservice.CommitteeMemberFullWithReadonlyAttributes, view rosterView) (out *committeeservice.CommitteeMemberFullWithReadonlyAttributes, ok bool) {
 	if m == nil {
-		return false
+		return nil, false
 	}
 	if view == rosterFull {
-		return true
+		return m, true
 	}
 	roleName := ""
 	if m.Role != nil {
@@ -249,27 +276,41 @@ func projectCommitteeMemberRecord(m *committeeservice.CommitteeMemberFullWithRea
 	}
 	if view == rosterChairsOnly {
 		if _, chair := committeeChairRoles[roleName]; !chair {
-			return false
+			return nil, false
 		}
 	}
-	// Fields no on-screen view carries.
-	m.Username, m.JobTitle, m.LinkedinProfile = nil, nil, nil
-	m.AppointedBy, m.Status = "", ""
-	m.CreatedAt, m.UpdatedAt = nil, nil
+	out = &committeeservice.CommitteeMemberFullWithReadonlyAttributes{
+		UID:           m.UID,
+		CommitteeUID:  m.CommitteeUID,
+		CommitteeName: m.CommitteeName,
+		FirstName:     m.FirstName,
+		LastName:      m.LastName,
+	}
 	if m.Role != nil {
-		m.Role.StartDate, m.Role.EndDate = nil, nil
-	}
-	if m.Voting != nil {
-		m.Voting.StartDate, m.Voting.EndDate = nil, nil
-	}
-	if m.Organization != nil {
-		m.Organization.ID = nil
+		out.Role = zeroOf(m.Role)
+		out.Role.Name = m.Role.Name
 	}
 	if view == rosterChairsOnly {
-		m.CommitteeCategory, m.Email = nil, nil
-		m.Voting, m.Organization = nil, nil
+		return out, true
 	}
-	return true
+	out.CommitteeCategory = m.CommitteeCategory
+	out.Email = m.Email
+	if m.Voting != nil {
+		out.Voting = zeroOf(m.Voting)
+		out.Voting.Status = m.Voting.Status
+	}
+	if m.Organization != nil {
+		out.Organization = zeroOf(m.Organization)
+		out.Organization.Name = m.Organization.Name
+		out.Organization.Website = m.Organization.Website
+	}
+	return out, true
+}
+
+// zeroOf returns a new zero value of the type p points to, for the generated
+// records' anonymous nested structs, which have no type name to construct.
+func zeroOf[T any](_ *T) *T {
+	return new(T)
 }
 
 // filterCommitteeMembers applies the roster rule to a page of committee_member

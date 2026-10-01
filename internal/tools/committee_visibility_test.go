@@ -199,6 +199,11 @@ func TestSearchCommitteeMembers_ViewerGetsChairsOnly(t *testing.T) {
 	}
 	// The relation check runs as the caller, with the exchanged LFX token.
 	assertExchangedAuth(t, api.RequestsTo(accessCheckPath)[0])
+	// The view is decided first and the search reads the chairs only, so a
+	// page never spans the members withheld.
+	if got := api.RequestsTo(resourcesPath)[0].Query["filters_or"]; strings.Join(got, ",") != "role.name:Chair,role.name:Vice Chair" {
+		t.Errorf("the search must be narrowed to the chairs, got filters_or %v", got)
+	}
 	if len(api.Requests()) != 2 {
 		t.Errorf("a viewer costs the search plus one access-check, got %d requests", len(api.Requests()))
 	}
@@ -224,8 +229,8 @@ func TestSearchCommitteeMembers_WriterGetsRecordsUnchanged(t *testing.T) {
 func TestSearchCommitteeMembers_AuditorMemberBasicProfileGetsMembersTab(t *testing.T) {
 	api := setupCommitteeTest(t)
 	api.GrantRelations("committee:" + committeeAuditorUID + "#auditor")
+	api.Respond(resourcesPath, callerMembershipPage(committeeAuditorUID)) // the caller's memberships, before the search
 	api.Respond(resourcesPath, rosterPage(committeeAuditorUID))           // the search
-	api.Respond(resourcesPath, callerMembershipPage(committeeAuditorUID)) // the caller's memberships
 	api.Respond("/committees/"+committeeAuditorUID+"/settings", committeeSettingsRecord(committeeAuditorUID, "basic_profile"))
 
 	_, out, err := handleSearchCommitteeMembers(context.Background(), stubCallToolRequest(), SearchCommitteeMembersArgs{CommitteeUID: committeeAuditorUID})
@@ -250,18 +255,21 @@ func TestSearchCommitteeMembers_AuditorMemberBasicProfileGetsMembersTab(t *testi
 	}
 	// The membership lookup ran as the caller on the username tag.
 	reqs := api.RequestsTo(resourcesPath)
-	if len(reqs) != 2 || reqs[1].Query.Get("tags_all") != "username:"+stubCallerUsername || reqs[1].Query.Get("type") != "committee_member" {
+	if len(reqs) != 2 || reqs[0].Query.Get("tags_all") != "username:"+stubCallerUsername || reqs[0].Query.Get("type") != "committee_member" {
 		t.Errorf("unexpected membership lookup %+v", reqs)
 	}
-	assertExchangedAuth(t, reqs[1])
+	if got := reqs[1].Query["filters_or"]; len(got) != 0 {
+		t.Errorf("a shown member list is read unnarrowed, got filters_or %v", got)
+	}
+	assertExchangedAuth(t, reqs[0])
 	assertExchangedAuth(t, api.RequestsTo("/committees/" + committeeAuditorUID + "/settings")[0])
 }
 
 func TestSearchCommitteeMembers_AuditorMemberHiddenGetsChairsOnly(t *testing.T) {
 	api := setupCommitteeTest(t)
 	api.GrantRelations("committee:" + committeeAuditorUID + "#auditor")
-	api.Respond(resourcesPath, rosterPage(committeeAuditorUID))
 	api.Respond(resourcesPath, callerMembershipPage(committeeAuditorUID))
+	api.Respond(resourcesPath, rosterPage(committeeAuditorUID))
 	api.Respond("/committees/"+committeeAuditorUID+"/settings", committeeSettingsRecord(committeeAuditorUID, "hidden"))
 
 	res, out, err := handleSearchCommitteeMembers(context.Background(), stubCallToolRequest(), SearchCommitteeMembersArgs{CommitteeUID: committeeAuditorUID})
@@ -277,8 +285,8 @@ func TestSearchCommitteeMembers_AuditorMemberHiddenGetsChairsOnly(t *testing.T) 
 func TestSearchCommitteeMembers_AuditorNotMemberSkipsSettings(t *testing.T) {
 	api := setupCommitteeTest(t)
 	api.GrantRelations("committee:" + committeeAuditorUID + "#auditor")
-	api.Respond(resourcesPath, rosterPage(committeeAuditorUID))
 	api.Respond(resourcesPath, callerMembershipPage(committeeViewerUID)) // member elsewhere
+	api.Respond(resourcesPath, rosterPage(committeeAuditorUID))
 
 	res, out, err := handleSearchCommitteeMembers(context.Background(), stubCallToolRequest(), SearchCommitteeMembersArgs{CommitteeUID: committeeAuditorUID})
 	if err != nil {
@@ -296,8 +304,8 @@ func TestSearchCommitteeMembers_AuditorNotMemberSkipsSettings(t *testing.T) {
 func TestSearchCommitteeMembers_SettingsForbiddenMeansNotShown(t *testing.T) {
 	api := setupCommitteeTest(t)
 	api.GrantRelations("committee:" + committeeAuditorUID + "#auditor")
-	api.Respond(resourcesPath, rosterPage(committeeAuditorUID))
 	api.Respond(resourcesPath, callerMembershipPage(committeeAuditorUID))
+	api.Respond(resourcesPath, rosterPage(committeeAuditorUID))
 	api.RespondStatus("/committees/"+committeeAuditorUID+"/settings", http.StatusForbidden, "")
 
 	res, out, err := handleSearchCommitteeMembers(context.Background(), stubCallToolRequest(), SearchCommitteeMembersArgs{CommitteeUID: committeeAuditorUID})
@@ -381,15 +389,49 @@ func TestSearchCommitteeMembers_FailsClosed(t *testing.T) {
 }
 
 func TestSearchCommitteeMembers_RefusesPersonFiltersWithoutShownList(t *testing.T) {
-	t.Run("no committee_uid", func(t *testing.T) {
+	t.Run("no scope", func(t *testing.T) {
+		api := setupCommitteeTest(t)
+		api.GrantRelations("committee:" + committeeWriterUID + "#writer")
+		_, _, err := handleSearchCommitteeMembers(context.Background(), stubCallToolRequest(), SearchCommitteeMembersArgs{Name: "Pat"})
+		if err == nil || !strings.Contains(err.Error(), "committee_uid") {
+			t.Fatalf("expected a refusal naming committee_uid, got %v", err)
+		}
+		if len(api.Requests()) != 0 {
+			t.Error("the refusal must happen before any upstream call")
+		}
+	})
+	t.Run("project the caller does not manage", func(t *testing.T) {
 		api := setupCommitteeTest(t)
 		api.GrantRelations("committee:" + committeeWriterUID + "#writer")
 		_, _, err := handleSearchCommitteeMembers(context.Background(), stubCallToolRequest(), SearchCommitteeMembersArgs{ProjectUID: "P1", Name: "Pat"})
 		if err == nil || !strings.Contains(err.Error(), "committee_uid") {
 			t.Fatalf("expected a refusal naming committee_uid, got %v", err)
 		}
-		if len(api.Requests()) != 0 {
-			t.Error("the refusal must happen before any upstream call")
+		if bodies := api.AccessCheckBodies(); len(bodies) != 1 || strings.Join(bodies[0], " ") != "project:P1#writer_guard" {
+			t.Errorf("expected one project writer check, got %v", bodies)
+		}
+		if n := len(api.RequestsTo(resourcesPath)); n != 0 {
+			t.Error("the search must not run when the filter is refused")
+		}
+	})
+	t.Run("project the caller manages", func(t *testing.T) {
+		api := setupCommitteeTest(t)
+		api.GrantRelations("project:P1#writer_guard", "committee:"+committeeWriterUID+"#writer")
+		api.Respond(resourcesPath, rosterPage(committeeWriterUID))
+		_, out, err := handleSearchCommitteeMembers(context.Background(), stubCallToolRequest(), SearchCommitteeMembersArgs{ProjectUID: "P1", Name: "Pat", OrganizationName: "Example Org"})
+		if err != nil {
+			t.Fatalf("a project writer may filter by name and organization: %v", err)
+		}
+		if len(out.Resources) != 2 || out.Resources[1].Data["email"] != "plain0@example.test" {
+			t.Errorf("a project writer gets the member list unchanged: %+v", out.Resources)
+		}
+	})
+	t.Run("project writer check fails closed", func(t *testing.T) {
+		api := setupCommitteeTest(t)
+		api.FailAccessCheck(http.StatusServiceUnavailable)
+		_, _, err := handleSearchCommitteeMembers(context.Background(), stubCallToolRequest(), SearchCommitteeMembersArgs{ProjectUID: "P1", OrganizationName: "Example Org"})
+		if err == nil || err.Error() != peopleVisibilityUnavailableMessage || len(api.RequestsTo(resourcesPath)) != 0 {
+			t.Fatalf("expected the unavailable message and no search, got %v", err)
 		}
 	})
 	t.Run("group mode names group_uid", func(t *testing.T) {
@@ -585,6 +627,16 @@ func TestGetCommitteeMember_Views(t *testing.T) {
 		}
 		if out.Organization == nil || out.Organization.ID != nil || out.Organization.Name == nil || out.Voting == nil || out.Voting.StartDate != nil || out.Voting.Status != "Voting Rep" {
 			t.Errorf("nested fields not reduced: %+v %+v", out.Organization, out.Voting)
+		}
+		// The record is built from an allowlist: exactly these are populated.
+		var populated []string
+		for _, key := range sortedKeys(got) {
+			if got[key] != nil && got[key] != "" {
+				populated = append(populated, key)
+			}
+		}
+		if want := "CommitteeCategory,CommitteeName,CommitteeUID,Email,FirstName,LastName,Organization,Role,UID,Voting"; strings.Join(populated, ",") != want {
+			t.Errorf("populated fields = %v, want %s", populated, want)
 		}
 	})
 	t.Run("predicate failure fails closed", func(t *testing.T) {

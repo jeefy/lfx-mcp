@@ -475,9 +475,11 @@ func handleGetCommitteeMember(ctx context.Context, req *mcp.CallToolRequest, arg
 			logger.ErrorContext(ctx, "group roster visibility check failed", "error", err)
 			return nil, nil, toolError(peopleVisibilityUnavailableMessage)
 		}
-		if !projectCommitteeMemberRecord(result.Member, views[args.CommitteeUID]) {
+		member, shown := projectCommitteeMemberRecord(result.Member, views[args.CommitteeUID])
+		if !shown {
 			return nil, nil, toolError(serviceLookupNotVisibleMessage(getCommitteeMemberOp))
 		}
+		result.Member = member
 	}
 
 	prettyJSON, err := json.MarshalIndent(result.Member, "", "  ")
@@ -564,27 +566,43 @@ func searchCommitteeMembers(ctx context.Context, req *mcp.CallToolRequest, args 
 	logger.InfoContext(ctx, "searching committee members", "committee_uid", args.CommitteeUID, "project_uid", args.ProjectUID, "organization_name", args.OrganizationName, "name", args.Name, "page_size", pageSize)
 
 	// Without full view, the result follows what LFX Self Serve shows the
-	// caller of each group (people_visibility.go). A filter that can probe
-	// for a person is accepted only for one group: organization_name for a
-	// group whose member list is shown; name only for a group the caller
-	// manages, because the query matches it against the username too, a
-	// field the Members tab does not show.
+	// caller of each group (people_visibility.go). For one group the view is
+	// decided before the query: a group whose member list is not shown is
+	// read as its chairs only, so pages never span the records withheld. A
+	// filter that can probe for a person is accepted only where the list is
+	// shown: organization_name for a group whose member list is shown; name
+	// only for a group the caller manages, because the query matches it
+	// against the username too, a field the Members tab does not show. Over a
+	// whole project both need the caller to manage every group in it.
 	fullView := HasFullView(ctx)
 	var views map[string]rosterView
-	if !fullView && (args.Name != "" || args.OrganizationName != "") {
+	if !fullView {
+		hasPersonFilter := args.Name != "" || args.OrganizationName != ""
 		singular, uidArg := committeeTerms(committeeNoun)
-		refusal := fmt.Sprintf("Error: name is available for one %s at a time that you manage, and organization_name for one whose member list LFX Self Serve shows you: set %s to such a %s.", singular, uidArg, singular)
-		if args.CommitteeUID == "" {
-			return nil, resourceSearchResult{}, toolError(refusal)
-		}
-		views, err = groupRosterViews(ctx, clients, tokenInfo, []string{args.CommitteeUID})
-		if err != nil {
-			logger.ErrorContext(ctx, "group roster visibility check failed", "error", err)
-			return nil, resourceSearchResult{}, toolError(peopleVisibilityUnavailableMessage)
-		}
-		view := views[args.CommitteeUID]
-		if view == rosterChairsOnly || (args.Name != "" && view != rosterFull) {
-			return nil, resourceSearchResult{}, toolError(refusal)
+		refusal := fmt.Sprintf("Error: name and organization_name are available for a %s you manage (set %s) or a project whose %ss you all manage (set project_uid); organization_name also for a %s whose member list LFX Self Serve shows you.", singular, uidArg, singular, singular)
+		switch {
+		case args.CommitteeUID != "":
+			views, err = groupRosterViews(ctx, clients, tokenInfo, []string{args.CommitteeUID})
+			if err != nil {
+				logger.ErrorContext(ctx, "group roster visibility check failed", "error", err)
+				return nil, resourceSearchResult{}, toolError(peopleVisibilityUnavailableMessage)
+			}
+			view := views[args.CommitteeUID]
+			if hasPersonFilter && (view == rosterChairsOnly || (args.Name != "" && view != rosterFull)) {
+				return nil, resourceSearchResult{}, toolError(refusal)
+			}
+			if view == rosterChairsOnly {
+				payload.FiltersOr = committeeChairFilters()
+			}
+		case hasPersonFilter:
+			manages, err := managesProjectGroups(ctx, clients, args.ProjectUID)
+			if err != nil {
+				logger.ErrorContext(ctx, "project writer check failed", "error", err)
+				return nil, resourceSearchResult{}, toolError(peopleVisibilityUnavailableMessage)
+			}
+			if !manages {
+				return nil, resourceSearchResult{}, toolError(refusal)
+			}
 		}
 	}
 
