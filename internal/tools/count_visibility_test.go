@@ -80,22 +80,32 @@ func TestCountLFXResources_NonPeopleTypesAreUngated(t *testing.T) {
 	})
 }
 
-func TestCountLFXResources_MeetingPeopleFieldFiltersAreRefused(t *testing.T) {
+func TestCountLFXResources_MeetingFiltersAreAllowlisted(t *testing.T) {
 	api := setupCountTest(t)
 	runCountGateCases(t, api, []countArgsCase{
 		{"meeting name and own fields", CountLFXResourcesArgs{Type: meetingResourceType, Name: "sync", FiltersAll: []string{"visibility:public", "meeting_type:Board"}, Tags: []string{"project_uid:P1"}}, true},
+		{"meeting date range on start_time", CountLFXResourcesArgs{Type: meetingResourceType, DateField: "start_time", DateFrom: "2026-01-01"}, true},
+		{"past meeting own fields", CountLFXResourcesArgs{Type: pastMeetingResourceType, FiltersAll: []string{"restricted:false", "meeting_and_occurrence_id:x-1"}}, true},
 		{"meeting created_by email", CountLFXResourcesArgs{Type: meetingResourceType, FiltersAll: []string{"created_by.email:x@example.test"}}, false},
 		{"meeting organizers", CountLFXResourcesArgs{Type: meetingResourceType, FiltersOr: []string{"organizers:auth0|x"}}, false},
 		{"meeting user_id", CountLFXResourcesArgs{Type: meetingResourceType, FiltersAll: []string{"user_id:auth0|x"}}, false},
 		{"meeting owner", CountLFXResourcesArgs{Type: meetingResourceType, FiltersAll: []string{"owner.username:x"}}, false},
+		{"meeting registrant_count", CountLFXResourcesArgs{Type: meetingResourceType, FiltersAll: []string{"registrant_count:12"}}, false},
+		{"meeting occurrences.registrant_count", CountLFXResourcesArgs{Type: meetingResourceType, FiltersAll: []string{"occurrences.registrant_count:7"}}, false},
 		{"past meeting updated_by", CountLFXResourcesArgs{Type: pastMeetingResourceType, FiltersAll: []string{"updated_by.email:x@example.test"}}, false},
 		{"past meeting updated_by_list", CountLFXResourcesArgs{Type: pastMeetingResourceType, FiltersOr: []string{"updated_by_list.email:x@example.test"}}, false},
-		{"past meeting own fields", CountLFXResourcesArgs{Type: pastMeetingResourceType, FiltersAll: []string{"restricted:false"}}, true},
+		{"past meeting created_by username", CountLFXResourcesArgs{Type: pastMeetingResourceType, FiltersAll: []string{"created_by.username:x"}}, false},
+		{"unknown field", CountLFXResourcesArgs{Type: meetingResourceType, FiltersAll: []string{"description:x"}}, false},
 		// The query service trims the field name, so padding must not slip past.
 		{"leading space", CountLFXResourcesArgs{Type: meetingResourceType, FiltersAll: []string{" created_by.email:x@example.test"}}, false},
 		{"leading tab", CountLFXResourcesArgs{Type: pastMeetingResourceType, FiltersOr: []string{"\towner.email:x@example.test"}}, false},
-		{"space before dot", CountLFXResourcesArgs{Type: meetingResourceType, FiltersAll: []string{"organizers :auth0|x"}}, false},
+		{"padded allowed field", CountLFXResourcesArgs{Type: meetingResourceType, FiltersAll: []string{" visibility :public"}}, true},
+		{"date_field on a people path", CountLFXResourcesArgs{Type: meetingResourceType, DateField: "updated_by_list.timestamp", DateFrom: "2026-01-01"}, false},
+		{"date_field on occurrences", CountLFXResourcesArgs{Type: pastMeetingResourceType, DateField: "sessions.start_time", DateTo: "2026-12-31"}, false},
 	})
+	if n := len(api.RequestsTo(accessCheckPath)); n != 0 {
+		t.Errorf("meeting counts need no relation check, got %d", n)
+	}
 }
 
 func TestCountLFXResources_FullViewSkipsTheGate(t *testing.T) {

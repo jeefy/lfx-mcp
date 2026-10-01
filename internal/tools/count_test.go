@@ -28,7 +28,7 @@ func TestCountLFXResources_PayloadMapping(t *testing.T) {
 	api := setupCountTest(t)
 	api.Respond(countPath, `{"count": 42, "has_more": false}`)
 
-	res, _, err := handleCountLFXResources(context.Background(), stubCallToolRequest(), CountLFXResourcesArgs{
+	res, _, err := handleCountLFXResources(fullViewCtx(), stubCallToolRequest(), CountLFXResourcesArgs{
 		Type:       "v1_past_meeting",
 		Parent:     "project:a09410000182dD2AAI",
 		Name:       "TOC",

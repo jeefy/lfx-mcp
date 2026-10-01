@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/linuxfoundation/lfx-mcp/internal/lfxv2"
@@ -322,9 +323,10 @@ func dataStrings(resources []*querysvc.Resource, key string) []string {
 //     parent=past_meeting:<id>, optionally with the is_attended:true tag,
 //     when the caller is its organizer or has full access.
 //   - v1_meeting and v1_past_meeting: the records are not people records,
-//     but filters_or / filters_all on the fields that name people
-//     (created_by, owner, organizers, user_id, updated_by, updated_by_list)
-//     would single out a person; those field filters are refused.
+//     but filters_or / filters_all on a field that names a person (editors,
+//     owner, organizer accounts, user id, registrant counts) would single
+//     one out; only the meeting's own fields (meetingCountFilterFields) and
+//     date fields (meetingCountDateFields) are accepted.
 func peopleCountGate(ctx context.Context, clients *lfxv2.Clients, tokenInfo *auth.TokenInfo, args CountLFXResourcesArgs) (refusal string, err error) {
 	hasPersonFilter := args.Name != "" || len(args.FiltersOr) > 0 || len(args.FiltersAll) > 0
 	hasDateRange := args.DateField != "" || args.DateFrom != "" || args.DateTo != ""
@@ -368,26 +370,37 @@ func peopleCountGate(ctx context.Context, clients *lfxv2.Clients, tokenInfo *aut
 		}
 		return "", nil
 	case meetingResourceType, pastMeetingResourceType:
+		allowed := "filters_or / filters_all on the meeting's own fields (" + strings.Join(meetingCountFilterFields, ", ") + ") and a date_field of " + strings.Join(meetingCountDateFields, ", ")
 		for _, filter := range append(append([]string{}, args.FiltersOr...), args.FiltersAll...) {
 			// The query service trims the field name before it applies the
 			// filter, so match the trimmed form.
 			field, _, _ := strings.Cut(filter, ":")
-			root, _, _ := strings.Cut(strings.TrimSpace(field), ".")
-			if _, people := meetingPeopleFilterFields[strings.TrimSpace(root)]; people {
-				return countRefusal(args.Type, "filters on the meeting's own fields, not on the people who created, own, organize or edited it"), nil
+			if !slices.Contains(meetingCountFilterFields, strings.TrimSpace(field)) {
+				return countRefusal(args.Type, allowed), nil
 			}
+		}
+		if args.DateField != "" && !slices.Contains(meetingCountDateFields, strings.TrimSpace(args.DateField)) {
+			return countRefusal(args.Type, allowed), nil
 		}
 		return "", nil
 	}
 	return "", nil
 }
 
-// meetingPeopleFilterFields are the data fields of v1_meeting and
-// v1_past_meeting records that name people; a count filtered on one of them
-// is refused without full view, whether or not the record trim keeps it.
-var meetingPeopleFilterFields = map[string]struct{}{
-	"created_by": {}, "owner": {}, "organizers": {}, "user_id": {}, "updated_by": {}, "updated_by_list": {},
+// meetingCountFilterFields are the only data fields a caller without full
+// view may filter v1_meeting and v1_past_meeting counts on: the fields the
+// meeting search tools themselves filter on, plus a record's own flags. An
+// allowlist, so that every field naming a person (created_by, owner,
+// organizers, user_id, updated_by, updated_by_list, registrant counts) and
+// any nested path stays out without being enumerated.
+var meetingCountFilterFields = []string{
+	"project_uid", "committee_uid", "meeting_id", "meeting_and_occurrence_id", "occurrence_id",
+	"visibility", "restricted", "meeting_type", "platform", "title",
 }
+
+// meetingCountDateFields are the date fields a caller without full view may
+// range v1_meeting and v1_past_meeting counts over.
+var meetingCountDateFields = []string{"start_time", "end_time", "created_at", "updated_at"}
 
 // countRefusal is the tool error refusing a count of a people type for a
 // caller without full view; allowed names the accepted form.
