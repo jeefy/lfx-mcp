@@ -280,6 +280,17 @@ func TestParseAccessResult(t *testing.T) {
 			name:    "result for a request that was not sent",
 			input:   "project:other#writer@user:alice\ttrue",
 			wantErr: true,
+		}, {
+			// The contract allows only true or false; any other status is a
+			// failed check, never a denial.
+			name:    "status neither true nor false",
+			input:   "project:abc-123#writer@user:alice\tgarbage",
+			wantErr: true,
+		},
+		{
+			name:    "empty status",
+			input:   "project:abc-123#writer@user:alice\t",
+			wantErr: true,
 		},
 	}
 	requests := []string{"project:abc-123#writer", "project:abc-123#owner"}

@@ -210,10 +210,20 @@ func parseAccessResult(result string, requests []string) (request string, allowe
 		return "", false, fmt.Errorf("unexpected access-check result format (no tab delimiter): %q", result)
 	}
 
+	// The contract allows only "true" or "false"; any other status is a
+	// failed check, so it is an error rather than a denial.
+	switch parts[1] {
+	case "true":
+		allowed = true
+	case "false":
+	default:
+		return "", false, fmt.Errorf("unexpected access-check status %q in result: %q", parts[1], result)
+	}
+
 	// The left side is "<request>@<user_type>:<user_id>".
 	for _, r := range requests {
 		if strings.HasPrefix(parts[0], r+"@") {
-			return r, parts[1] == "true", nil
+			return r, allowed, nil
 		}
 	}
 
