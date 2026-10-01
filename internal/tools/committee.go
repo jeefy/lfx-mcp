@@ -138,7 +138,7 @@ func RegisterSearchCommitteeMembers(server *mcp.Server, asGroups bool) {
 	if asGroups {
 		mcp.AddTool(server, &mcp.Tool{
 			Name:        "search_group_members",
-			Description: "Search for LFX group (also called committee) members. Optionally filter by group UID, project UID, and/or name. The authoritative source for committee rosters. You get the member list LFX Self Serve shows you: the list for groups you manage or that share their member list with you, otherwise their chairs. Count with count_lfx_resources; records carry organization, role, voting status, term dates if recorded, no country. Filters combine with AND: a record must match every filter given. organization_name keeps one organization's members and must equal the stored spelling (copy it from a roster row or get_org_committee_seats). With project_uid set, an empty result carries a roster-coverage note saying whether the project has any committee onboarded into LFX v2; an empty result never proves that a person or organization holds no seat.",
+			Description: "Search for LFX group (also called committee) members. Optionally filter by group UID, project UID, and/or name. The authoritative source for committee rosters. You get the member list LFX Self Serve shows you: the list for groups you manage or that share their member list with you, otherwise their chairs. Count with count_lfx_resources; full-list records carry organization, role, voting status, term dates if recorded, no country. Filters combine with AND: a record must match every filter given. organization_name keeps one organization's members and must equal the stored spelling (copy it from a roster row or get_org_committee_seats). With project_uid set, an empty result carries a roster-coverage note saying whether the project has any committee onboarded into LFX v2; an empty result never proves that a person or organization holds no seat.",
 			Annotations: &mcp.ToolAnnotations{
 				Title:        "Search Group Members",
 				ReadOnlyHint: true,
@@ -148,7 +148,7 @@ func RegisterSearchCommitteeMembers(server *mcp.Server, asGroups bool) {
 	}
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "search_committee_members",
-		Description: "Search for LFX committee members. Optionally filter by committee UID, project UID, and/or name. The authoritative source for committee rosters. You get the member list LFX Self Serve shows you: the list for committees you manage or that share their member list with you, otherwise their chairs. Count with count_lfx_resources; records carry organization, role, voting status, term dates if recorded, no country. Filters combine with AND: a record must match every filter given. organization_name keeps one organization's members and must equal the stored spelling (copy it from a roster row or get_org_committee_seats). With project_uid set, an empty result carries a roster-coverage note saying whether the project has any committee onboarded into LFX v2; an empty result never proves that a person or organization holds no seat.",
+		Description: "Search for LFX committee members. Optionally filter by committee UID, project UID, and/or name. The authoritative source for committee rosters. You get the member list LFX Self Serve shows you: the list for committees you manage or that share their member list with you, otherwise their chairs. Count with count_lfx_resources; full-list records carry organization, role, voting status, term dates if recorded, no country. Filters combine with AND: a record must match every filter given. organization_name keeps one organization's members and must equal the stored spelling (copy it from a roster row or get_org_committee_seats). With project_uid set, an empty result carries a roster-coverage note saying whether the project has any committee onboarded into LFX v2; an empty result never proves that a person or organization holds no seat.",
 		Annotations: &mcp.ToolAnnotations{
 			Title:        "Search Committee Members",
 			ReadOnlyHint: true,
@@ -565,12 +565,15 @@ func searchCommitteeMembers(ctx context.Context, req *mcp.CallToolRequest, args 
 
 	// Without full view, the result follows what LFX Self Serve shows the
 	// caller of each group (people_visibility.go). A filter that can probe
-	// for a person is accepted only for one group whose member list is shown.
+	// for a person is accepted only for one group: organization_name for a
+	// group whose member list is shown; name only for a group the caller
+	// manages, because the query matches it against the username too, a
+	// field the Members tab does not show.
 	fullView := HasFullView(ctx)
 	var views map[string]rosterView
 	if !fullView && (args.Name != "" || args.OrganizationName != "") {
 		singular, uidArg := committeeTerms(committeeNoun)
-		refusal := fmt.Sprintf("Error: name and organization_name are available for one %s at a time whose member list LFX Self Serve shows you: set %s to a %s you manage, or one you audit and belong to with member profiles visible.", singular, uidArg, singular)
+		refusal := fmt.Sprintf("Error: name is available for one %s at a time that you manage, and organization_name for one whose member list LFX Self Serve shows you: set %s to such a %s.", singular, uidArg, singular)
 		if args.CommitteeUID == "" {
 			return nil, resourceSearchResult{}, toolError(refusal)
 		}
@@ -579,7 +582,8 @@ func searchCommitteeMembers(ctx context.Context, req *mcp.CallToolRequest, args 
 			logger.ErrorContext(ctx, "group roster visibility check failed", "error", err)
 			return nil, resourceSearchResult{}, toolError(peopleVisibilityUnavailableMessage)
 		}
-		if views[args.CommitteeUID] == rosterChairsOnly {
+		view := views[args.CommitteeUID]
+		if view == rosterChairsOnly || (args.Name != "" && view != rosterFull) {
 			return nil, resourceSearchResult{}, toolError(refusal)
 		}
 	}

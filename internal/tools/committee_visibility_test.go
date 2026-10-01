@@ -410,15 +410,24 @@ func TestSearchCommitteeMembers_RefusesPersonFiltersWithoutShownList(t *testing.
 			t.Error("the search must not run when the filter is refused")
 		}
 	})
-	t.Run("roster-shown group passes", func(t *testing.T) {
+	t.Run("roster-shown group: organization_name passes, name does not", func(t *testing.T) {
 		// An auditor who is a member of a basic_profile group sees the
-		// Members tab, so the filters are open to them as to a writer.
+		// Members tab, which shows organisations but not usernames; name
+		// matches the username too, so it stays with writers.
 		api := setupCommitteeTest(t)
 		api.GrantRelations("committee:" + committeeAuditorUID + "#auditor")
 		api.Respond(resourcesPath, callerMembershipPage(committeeAuditorUID)) // membership, during the up-front check
 		api.Respond("/committees/"+committeeAuditorUID+"/settings", committeeSettingsRecord(committeeAuditorUID, "basic_profile"))
+		_, _, err := handleSearchCommitteeMembers(context.Background(), stubCallToolRequest(), SearchCommitteeMembersArgs{CommitteeUID: committeeAuditorUID, Name: "Pat"})
+		if err == nil || !strings.Contains(err.Error(), "manage") || len(api.RequestsTo(resourcesPath)) != 1 {
+			t.Fatalf("name must be refused for a roster-shown group before the search, got %v", err)
+		}
+		api = setupCommitteeTest(t)
+		api.GrantRelations("committee:" + committeeAuditorUID + "#auditor")
+		api.Respond(resourcesPath, callerMembershipPage(committeeAuditorUID))
+		api.Respond("/committees/"+committeeAuditorUID+"/settings", committeeSettingsRecord(committeeAuditorUID, "basic_profile"))
 		api.Respond(resourcesPath, rosterPage(committeeAuditorUID)) // the search
-		_, out, err := handleSearchCommitteeMembers(context.Background(), stubCallToolRequest(), SearchCommitteeMembersArgs{CommitteeUID: committeeAuditorUID, Name: "Pat"})
+		_, out, err := handleSearchCommitteeMembers(context.Background(), stubCallToolRequest(), SearchCommitteeMembersArgs{CommitteeUID: committeeAuditorUID, OrganizationName: "Example Org"})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
