@@ -16,7 +16,7 @@ import (
 
 // Group (committee member) fixtures. UIDs are valid UUIDs because the
 // committee service's response validator checks the format; every e-mail is
-// under example.test so a test can assert that no address leaked.
+// under example.test so a test can assert that no address is returned.
 const (
 	committeeWriterUID  = "11111111-1111-4111-8111-111111111111"
 	committeeAuditorUID = "22222222-2222-4222-8222-222222222222"
@@ -41,7 +41,7 @@ func groupMemberDoc(uid, committeeUID, role, email string) string {
 	    "first_name": "Pat",
 	    "last_name": "Member",
 	    "job_title": "Engineer",
-	    "linkedin_profile": "https://linkedin.com/in/pat",
+	    "linkedin_profile": "https://example.test/in/pat",
 	    "role": {"name": %q, "start_date": "2026-01-01"},
 	    "appointed_by": "Community",
 	    "status": "Active",
@@ -67,7 +67,6 @@ func committeeMemberRecord(uid, committeeUID, role, email string) string {
 	  "first_name": "Pat",
 	  "last_name": "Member",
 	  "job_title": "Engineer",
-	  "linkedin_profile": "https://linkedin.com/in/pat",
 	  "role": {"name": %q, "start_date": "2026-01-01"},
 	  "appointed_by": "Community",
 	  "status": "Active",
@@ -197,6 +196,8 @@ func TestSearchCommitteeMembers_ViewerGetsChairsOnly(t *testing.T) {
 	if len(bodies) != 1 || strings.Join(bodies[0], " ") != "committee:"+committeeViewerUID+"#writer committee:"+committeeViewerUID+"#auditor" {
 		t.Errorf("unexpected access-check requests %v", bodies)
 	}
+	// The relation check runs as the caller, with the exchanged LFX token.
+	assertExchangedAuth(t, api.RequestsTo(accessCheckPath)[0])
 	if len(api.Requests()) != 2 {
 		t.Errorf("a viewer costs the search plus one access-check, got %d requests", len(api.Requests()))
 	}
@@ -440,7 +441,7 @@ func TestGetCommitteeMember_Views(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if out == nil || out.Email == nil || *out.Email != "plain@example.test" || out.LinkedinProfile == nil {
+		if out == nil || out.Email == nil || *out.Email != "plain@example.test" || out.JobTitle == nil {
 			t.Errorf("full view must return the record unchanged: %s", allResultText(t, res))
 		}
 		if len(api.RequestsTo(accessCheckPath)) != 0 {
@@ -475,7 +476,7 @@ func TestGetCommitteeMember_Views(t *testing.T) {
 		if err := json.Unmarshal([]byte(text), &got); err != nil {
 			t.Fatal(err)
 		}
-		for _, key := range []string{"Email", "Username", "JobTitle", "LinkedinProfile", "Voting", "Organization", "CommitteeCategory", "CreatedAt", "UpdatedAt"} {
+		for _, key := range []string{"Email", "Username", "JobTitle", "Voting", "Organization", "CommitteeCategory", "CreatedAt", "UpdatedAt"} {
 			if got[key] != nil {
 				t.Errorf("%s must be null in the chair stub, got %v", key, got[key])
 			}
@@ -499,21 +500,28 @@ func TestGetCommitteeMember_Views(t *testing.T) {
 		api.GrantRelations()
 		api.Respond(memberPath+memberPlainUID, committeeMemberRecord(memberPlainUID, committeeViewerUID, "None", "plain@example.test"))
 		_, out, err := handleGetCommitteeMember(context.Background(), stubCallToolRequest(), GetCommitteeMemberArgs{CommitteeUID: committeeViewerUID, MemberUID: memberPlainUID})
-		if err == nil || err.Error() != lookupNotVisibleMessage("committee member", memberPlainUID) {
-			t.Fatalf("expected the not-visible lookup message, got %v", err)
+		if err == nil {
+			t.Fatal("expected an error")
 		}
 		if out != nil {
 			t.Error("no record may travel with the refusal")
 		}
 		assertNoEmail(t, err.Error())
+		// Byte-identical to the committee service answering 404 for a UID
+		// that does not exist, so the two cannot be told apart.
+		api.RespondStatus(memberPath+"missing", http.StatusNotFound, `{"code":"404","message":"member not found"}`)
+		_, _, notFound := handleGetCommitteeMember(context.Background(), stubCallToolRequest(), GetCommitteeMemberArgs{CommitteeUID: committeeViewerUID, MemberUID: "missing"})
+		if notFound == nil || notFound.Error() != err.Error() {
+			t.Fatalf("dropped record text %q must equal the 404 text %v", err.Error(), notFound)
+		}
 	})
-	t.Run("group mode labels the record a group member", func(t *testing.T) {
+	t.Run("group mode gives the same text", func(t *testing.T) {
 		api := setupCommitteeTest(t)
 		api.GrantRelations()
 		api.Respond(memberPath+memberPlainUID, committeeMemberRecord(memberPlainUID, committeeViewerUID, "None", "plain@example.test"))
 		_, _, err := handleGetCommitteeMemberGroupMode(context.Background(), stubCallToolRequest(), GetGroupMemberArgs{GroupUID: committeeViewerUID, MemberUID: memberPlainUID})
-		if err == nil || err.Error() != lookupNotVisibleMessage("group member", memberPlainUID) {
-			t.Fatalf("expected the group-mode message, got %v", err)
+		if err == nil || err.Error() != serviceLookupNotVisibleMessage(getCommitteeMemberOp) {
+			t.Fatalf("expected the shared text, got %v", err)
 		}
 	})
 	t.Run("auditor member basic_profile keeps the Members tab fields", func(t *testing.T) {
@@ -530,7 +538,7 @@ func TestGetCommitteeMember_Views(t *testing.T) {
 		if err := json.Unmarshal([]byte(allResultText(t, res)), &got); err != nil {
 			t.Fatal(err)
 		}
-		for _, key := range []string{"Username", "JobTitle", "LinkedinProfile", "CreatedAt", "UpdatedAt"} {
+		for _, key := range []string{"Username", "JobTitle", "CreatedAt", "UpdatedAt"} {
 			if got[key] != nil {
 				t.Errorf("%s must be null on the Members tab, got %v", key, got[key])
 			}

@@ -12,7 +12,7 @@ import (
 )
 
 // Meeting-side fixtures for the LFX Self Serve parity rules. Every address is
-// under example.test so a test can assert that none leaked.
+// under example.test so a test can assert that none is returned.
 
 // registrantDoc is one v1_meeting_registrant query-service resource.
 func registrantDoc(uid, meetingID, email string, host bool) string {
@@ -221,6 +221,7 @@ func TestSearchMeetingRegistrants_ViewsPerMeeting(t *testing.T) {
 	if len(bodies) != 1 || len(bodies[0]) != 3 {
 		t.Errorf("expected one batch of three organizer checks, got %v", bodies)
 	}
+	assertExchangedAuth(t, api.RequestsTo(accessCheckPath)[0])
 	lookups := api.RequestsTo(resourcesPath)
 	if len(lookups) != 2 {
 		t.Fatalf("expected the search and one self lookup, got %d", len(lookups))

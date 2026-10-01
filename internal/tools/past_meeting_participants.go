@@ -280,9 +280,6 @@ func handleSearchPastMeetingParticipants(ctx context.Context, req *mcp.CallToolR
 	if maxMeetings <= 0 {
 		maxMeetings = participantDefaultMaxMeetings
 	}
-	if hasDateRange && maxMeetings > participantHardMaxMeetings {
-		return errorResult(fmt.Sprintf("Error: max_meetings must be at most %d", participantHardMaxMeetings)), nil, nil
-	}
 
 	var tokenInfo *auth.TokenInfo
 	if req.Extra != nil {
@@ -317,6 +314,13 @@ func handleSearchPastMeetingParticipants(ctx context.Context, req *mcp.CallToolR
 	if !fullView && hasPersonFilter && args.PastMeetingID == "" && !hasDateRange {
 		return errorResult(participantFilterRefusal), nil, nil
 	}
+	// Past meetings are resolved first under a date range and, without full
+	// view, for a count over a project or committee scope; max_meetings
+	// bounds both.
+	resolvesMeetings := hasDateRange || (!fullView && args.CountOnly && args.PastMeetingID == "")
+	if resolvesMeetings && maxMeetings > participantHardMaxMeetings {
+		return errorResult(fmt.Sprintf("Error: max_meetings must be at most %d", participantHardMaxMeetings)), nil, nil
+	}
 
 	logger.InfoContext(ctx, "searching past meeting participants",
 		"past_meeting_id", args.PastMeetingID,
@@ -339,7 +343,7 @@ func handleSearchPastMeetingParticipants(ctx context.Context, req *mcp.CallToolR
 	perMeeting := hasDateRange
 	truncated := false
 	budget := &requestBudget{remaining: participantMaxRequests}
-	if hasDateRange || (!fullView && args.CountOnly && args.PastMeetingID == "") {
+	if resolvesMeetings {
 		resolved, trunc, err := resolvePastMeetingIDs(ctx, clients, parent, args, maxMeetings, budget)
 		if err != nil {
 			logger.ErrorContext(ctx, "past meeting resolution failed", "error", err)
@@ -429,6 +433,10 @@ func handleSearchPastMeetingParticipants(ctx context.Context, req *mcp.CallToolR
 				logger.ErrorContext(ctx, "QueryResources failed", "error", err)
 				return errorResult(friendlyAPIError("failed to search past meeting participants", err)), nil, nil
 			}
+			if !fullView {
+				// Only records the caller is shown count toward the cap.
+				rs = selectParticipants(rs, views, tokenInfo)
+			}
 			all = append(all, rs...)
 			drained = i + 1
 			// Records were left behind only if this meeting had more, or
@@ -475,12 +483,12 @@ func handleSearchPastMeetingParticipants(ctx context.Context, req *mcp.CallToolR
 		out.PageToken = result.PageToken
 	}
 
-	records := len(out.Resources)
-	if dedupe {
-		// Identity matching needs the full records, so people are merged
-		// before any field is reduced.
-		out.Resources = dedupeParticipants(out.Resources)
-	}
+	// Without full view the rule takes two passes around de-duplication:
+	// records the caller is not shown are dropped first, with their fields
+	// intact, so identity matching (which needs the full records) only ever
+	// merges records the caller is shown, within one meeting; fields are
+	// reduced after. Totals describe what is returned, never what was
+	// withheld.
 	if !fullView {
 		if views == nil {
 			views, err = participantViews(ctx, clients, dataStrings(out.Resources, "meeting_and_occurrence_id"))
@@ -489,22 +497,34 @@ func handleSearchPastMeetingParticipants(ctx context.Context, req *mcp.CallToolR
 				return errorResult(peopleVisibilityUnavailableMessage), nil, nil
 			}
 		}
-		out.Resources = filterParticipants(out.Resources, views, tokenInfo)
-		// Totals describe what is returned, never what was withheld.
-		records = len(out.Resources)
+		out.Resources = selectParticipants(out.Resources, views, tokenInfo)
+		if out.Meetings != nil {
+			shown := distinctMeetings(out.Resources)
+			out.Meetings = &shown
+		}
 	}
+	records := len(out.Resources)
 	// A date range drains every page itself, so it never has a token and is
-	// never a continuation; the page-level warnings count raw records, before
-	// de-duplication. When max_meetings left meetings in the range
-	// unexpanded, the result does not cover the whole filter set, so no
-	// warning is added: the truncation note already says what to do next.
+	// never a continuation; the page-level warnings count records before
+	// de-duplication (with full view, every raw record; without it, the
+	// records the caller is shown). When max_meetings left meetings in the
+	// range unexpanded, the result does not cover the whole filter set, so
+	// no warning is added: the truncation note already says what to do next.
 	if !truncated {
 		out.Warnings = searchWarnings("past-meeting participants", records, pageSize, hasPageToken(out.PageToken), args.PageToken != "")
 	}
 	if dedupe {
+		if fullView {
+			out.Resources = dedupeParticipants(out.Resources)
+		} else {
+			out.Resources = dedupeParticipantsPerMeeting(out.Resources)
+		}
 		people := len(out.Resources)
 		out.People = &people
 		out.Records = &records
+	}
+	if !fullView {
+		out.Resources = filterParticipants(out.Resources, views, tokenInfo)
 	}
 	if out.Resources == nil {
 		out.Resources = []*querysvc.Resource{}

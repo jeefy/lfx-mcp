@@ -79,6 +79,20 @@ func TestCountLFXResources_NonPeopleTypesAreUngated(t *testing.T) {
 	})
 }
 
+func TestCountLFXResources_MeetingPeopleFieldFiltersAreRefused(t *testing.T) {
+	api := setupCountTest(t)
+	runCountGateCases(t, api, []countArgsCase{
+		{"meeting name and own fields", CountLFXResourcesArgs{Type: meetingResourceType, Name: "sync", FiltersAll: []string{"visibility:public", "meeting_type:Board"}, Tags: []string{"project_uid:P1"}}, true},
+		{"meeting created_by email", CountLFXResourcesArgs{Type: meetingResourceType, FiltersAll: []string{"created_by.email:x@example.test"}}, false},
+		{"meeting organizers", CountLFXResourcesArgs{Type: meetingResourceType, FiltersOr: []string{"organizers:auth0|x"}}, false},
+		{"meeting user_id", CountLFXResourcesArgs{Type: meetingResourceType, FiltersAll: []string{"user_id:auth0|x"}}, false},
+		{"meeting owner", CountLFXResourcesArgs{Type: meetingResourceType, FiltersAll: []string{"owner.username:x"}}, false},
+		{"past meeting updated_by", CountLFXResourcesArgs{Type: pastMeetingResourceType, FiltersAll: []string{"updated_by.email:x@example.test"}}, false},
+		{"past meeting updated_by_list", CountLFXResourcesArgs{Type: pastMeetingResourceType, FiltersOr: []string{"updated_by_list.email:x@example.test"}}, false},
+		{"past meeting own fields", CountLFXResourcesArgs{Type: pastMeetingResourceType, FiltersAll: []string{"restricted:false"}}, true},
+	})
+}
+
 func TestCountLFXResources_FullViewSkipsTheGate(t *testing.T) {
 	api := setupCountTest(t)
 	api.Respond(countPath, `{"count": 3, "has_more": false}`)

@@ -228,10 +228,10 @@ func handleGetCommitteeGroupMode(ctx context.Context, req *mcp.CallToolRequest, 
 
 // handleGetCommitteeMemberGroupMode adapts group-mode args to the committee member handler.
 func handleGetCommitteeMemberGroupMode(ctx context.Context, req *mcp.CallToolRequest, args GetGroupMemberArgs) (*mcp.CallToolResult, *committeeservice.CommitteeMemberFullWithReadonlyAttributes, error) {
-	return getCommitteeMember(ctx, req, GetCommitteeMemberArgs{
+	return handleGetCommitteeMember(ctx, req, GetCommitteeMemberArgs{
 		CommitteeUID: args.GroupUID,
 		MemberUID:    args.MemberUID,
-	}, "group member")
+	})
 }
 
 // handleSearchCommitteeMembersGroupMode adapts group-mode args to the
@@ -421,14 +421,12 @@ func handleGetCommittee(ctx context.Context, req *mcp.CallToolRequest, args GetC
 	}, out, nil
 }
 
+// getCommitteeMemberOp is the operation named in get_committee_member's
+// upstream error text, in both terminology modes.
+const getCommitteeMemberOp = "failed to get committee member"
+
 // handleGetCommitteeMember implements the get_committee_member tool logic.
 func handleGetCommitteeMember(ctx context.Context, req *mcp.CallToolRequest, args GetCommitteeMemberArgs) (*mcp.CallToolResult, *committeeservice.CommitteeMemberFullWithReadonlyAttributes, error) {
-	return getCommitteeMember(ctx, req, args, "committee member")
-}
-
-// getCommitteeMember is the shared lookup implementation; memberLabel names
-// the record ("committee member" or "group member") in user-facing text.
-func getCommitteeMember(ctx context.Context, req *mcp.CallToolRequest, args GetCommitteeMemberArgs, memberLabel string) (*mcp.CallToolResult, *committeeservice.CommitteeMemberFullWithReadonlyAttributes, error) {
 	logger := newToolLogger(ctx, req)
 
 	if committeeConfig == nil {
@@ -465,12 +463,12 @@ func getCommitteeMember(ctx context.Context, req *mcp.CallToolRequest, args GetC
 	})
 	if err != nil {
 		logger.ErrorContext(ctx, "GetCommitteeMember failed", "error", err, "committee_uid", args.CommitteeUID, "member_uid", args.MemberUID)
-		return nil, nil, toolError(friendlyAPIError("failed to get committee member", err))
+		return nil, nil, toolError(friendlyAPIError(getCommitteeMemberOp, err))
 	}
 
 	// Without full view, the record follows what LFX Self Serve shows the
-	// caller of this group; a record it does not show reads like one that
-	// is not visible at all.
+	// caller of this group. A record it does not show gets the very text the
+	// committee service's 404 gets above, so the two cannot be told apart.
 	if !HasFullView(ctx) {
 		views, err := groupRosterViews(ctx, clients, tokenInfo, []string{args.CommitteeUID})
 		if err != nil {
@@ -478,7 +476,7 @@ func getCommitteeMember(ctx context.Context, req *mcp.CallToolRequest, args GetC
 			return nil, nil, toolError(peopleVisibilityUnavailableMessage)
 		}
 		if !projectCommitteeMemberRecord(result.Member, views[args.CommitteeUID]) {
-			return nil, nil, toolError(lookupNotVisibleMessage(memberLabel, args.MemberUID))
+			return nil, nil, toolError(serviceLookupNotVisibleMessage(getCommitteeMemberOp))
 		}
 	}
 

@@ -321,6 +321,10 @@ func dataStrings(resources []*querysvc.Resource, key string) []string {
 //     with full access to the past meeting. Allowed only as
 //     parent=past_meeting:<id>, optionally with the is_attended:true tag,
 //     when the caller is its organizer or has full access.
+//   - v1_meeting and v1_past_meeting: the records are not people records,
+//     but filters_or / filters_all on the people fields the search tools
+//     leave out of them (editors, organizer accounts, owner, user id) would
+//     single out a person; those field filters are refused.
 func peopleCountGate(ctx context.Context, clients *lfxv2.Clients, tokenInfo *auth.TokenInfo, args CountLFXResourcesArgs) (refusal string, err error) {
 	hasPersonFilter := args.Name != "" || len(args.FiltersOr) > 0 || len(args.FiltersAll) > 0
 	hasDateRange := args.DateField != "" || args.DateFrom != "" || args.DateTo != ""
@@ -363,8 +367,24 @@ func peopleCountGate(ctx context.Context, clients *lfxv2.Clients, tokenInfo *aut
 			return countRefusal(args.Type, allowed), nil
 		}
 		return "", nil
+	case meetingResourceType, pastMeetingResourceType:
+		for _, filter := range append(append([]string{}, args.FiltersOr...), args.FiltersAll...) {
+			field, _, _ := strings.Cut(filter, ":")
+			root, _, _ := strings.Cut(field, ".")
+			if _, people := meetingPeopleFilterFields[root]; people {
+				return countRefusal(args.Type, "filters on the meeting's own fields, not on the people who created, own, organize or edited it"), nil
+			}
+		}
+		return "", nil
 	}
 	return "", nil
+}
+
+// meetingPeopleFilterFields are the data fields of v1_meeting and
+// v1_past_meeting records that name people and that trimMeetingPeopleFields /
+// trimPastMeetingPeopleFields leave out of or reduce in search results.
+var meetingPeopleFilterFields = map[string]struct{}{
+	"created_by": {}, "owner": {}, "organizers": {}, "user_id": {}, "updated_by": {}, "updated_by_list": {},
 }
 
 // countRefusal is the tool error refusing a count of a people type for a

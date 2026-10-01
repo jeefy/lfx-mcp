@@ -175,6 +175,7 @@ func TestParticipants_SingleMeetingViews(t *testing.T) {
 			if len(bodies) != 1 {
 				t.Fatalf("expected one access-check batch, got %v", bodies)
 			}
+			assertExchangedAuth(t, api.RequestsTo(accessCheckPath)[0])
 			wantReqs := 4
 			if tc.id == pastCommittee {
 				wantReqs = 5
@@ -186,16 +187,17 @@ func TestParticipants_SingleMeetingViews(t *testing.T) {
 	}
 }
 
-func TestParticipants_DedupeRunsBeforeProjection(t *testing.T) {
-	// The same host appears on the invitee side (host:true, not attended)
-	// and the join side (host:false, attended): merged, the stub carries
-	// both flags, which projecting first would have lost.
+func TestParticipants_DedupeMergesShownRecordsBeforeProjection(t *testing.T) {
+	// The same host appears twice in a full-access meeting, as the invitee
+	// record (host:true, not attended) and the join record (host:true,
+	// attended): both are shown, merged into one stub carrying both flags,
+	// which projecting first would have lost.
 	api := setupParticipantTest(t)
 	api.GrantRelations()
 	api.Respond(resourcesPath, pastDocs(pastPublic))
 	api.Respond(resourcesPath, page([]string{
 		participantDocFor("inv", pastPublic, "Host@example.test", "Hosty", "H", "", true, false),
-		participantDocFor("join", pastPublic, "host@example.test", "Hosty", "H", "", false, true),
+		participantDocFor("join", pastPublic, "host@example.test", "Hosty", "H", "", true, true),
 	}, ""))
 	_, out, _ := handleSearchPastMeetingParticipants(context.Background(), stubCallToolRequest(), SearchPastMeetingParticipantsArgs{PastMeetingID: pastPublic})
 	got := participantsOf(t, out)
@@ -205,6 +207,82 @@ func TestParticipants_DedupeRunsBeforeProjection(t *testing.T) {
 	if got[0]["email"] != nil {
 		t.Error("the merged stub carries no e-mail")
 	}
+	result := out.(participantSearchResult)
+	if *result.Records != 2 || *result.People != 1 {
+		t.Errorf("records/people describe the shown records: %d/%d", *result.Records, *result.People)
+	}
+}
+
+func TestParticipants_HiddenRecordsNeverMergeIntoShownOnes(t *testing.T) {
+	// One person with records in a meeting the caller organizes and in a
+	// private meeting of the same project. The private record must neither
+	// fill fields into the organizer's record nor decide its fate.
+	t.Run("organizer record keeps only its own fields", func(t *testing.T) {
+		api := setupParticipantTest(t)
+		api.GrantRelations("v1_past_meeting:" + pastOrganized + "#organizer")
+		api.Respond(resourcesPath, page([]string{
+			// name-only record in the organized meeting, attended
+			participantDocFor("a-x", pastOrganized, "", "Xavier", "X", "", false, true),
+			// full record in the hidden meeting: host, with e-mail
+			participantDocFor("b-x", pastHidden, "xavier.hidden@example.test", "Xavier", "X", "", true, false),
+		}, ""))
+		api.Respond(resourcesPath, pastDocs(pastOrganized, pastHidden))
+		res, out, _ := handleSearchPastMeetingParticipants(context.Background(), stubCallToolRequest(), SearchPastMeetingParticipantsArgs{ProjectUID: "P1"})
+		if res.IsError {
+			t.Fatal(allResultText(t, res))
+		}
+		got := participantsOf(t, out)
+		if uids(got) != "a-x" || got[0]["host"] != false || got[0]["email"] != "" {
+			t.Fatalf("the organizer's record must survive unchanged and alone: %v", got)
+		}
+		if strings.Contains(allResultText(t, res), "xavier.hidden@example.test") {
+			t.Error("the hidden meeting's address must not appear")
+		}
+	})
+	t.Run("organizer record is not swallowed by an attended hidden record", func(t *testing.T) {
+		api := setupParticipantTest(t)
+		api.GrantRelations("v1_past_meeting:" + pastOrganized + "#organizer")
+		api.Respond(resourcesPath, page([]string{
+			participantDocFor("a-z", pastOrganized, "z@example.test", "Zed", "Z", "", false, false),
+			participantDocFor("b-z", pastHidden, "z@example.test", "Zed", "Z", "", false, true),
+		}, ""))
+		api.Respond(resourcesPath, pastDocs(pastOrganized, pastHidden))
+		_, out, _ := handleSearchPastMeetingParticipants(context.Background(), stubCallToolRequest(), SearchPastMeetingParticipantsArgs{ProjectUID: "P1"})
+		if got := participantsOf(t, out); uids(got) != "a-z" || got[0]["is_attended"] != false {
+			t.Fatalf("the organizer's record must be returned as stored: %v", got)
+		}
+	})
+	t.Run("a host of a hidden meeting is not a host of a public one", func(t *testing.T) {
+		api := setupParticipantTest(t)
+		api.GrantRelations()
+		api.Respond(resourcesPath, page([]string{
+			participantDocFor("a-y", pastPublic, "y@example.test", "Yan", "Y", "", false, true),
+			participantDocFor("b-y", pastHidden, "y@example.test", "Yan", "Y", "", true, true),
+		}, ""))
+		api.Respond(resourcesPath, pastDocs(pastPublic, pastHidden))
+		_, out, _ := handleSearchPastMeetingParticipants(context.Background(), stubCallToolRequest(), SearchPastMeetingParticipantsArgs{ProjectUID: "P1"})
+		if got := participantsOf(t, out); len(got) != 0 {
+			t.Fatalf("a non-host of the public meeting must not appear: %v", got)
+		}
+	})
+	t.Run("a name-only stranger does not merge into the caller's own record", func(t *testing.T) {
+		api := setupParticipantTest(t)
+		api.GrantRelations()
+		api.Respond(resourcesPath, pastDocs(pastHidden))
+		api.Respond(resourcesPath, page([]string{
+			participantDocFor("me", pastHidden, stubCallerEmail, "Stub", "User", "", false, true),
+			participantDocFor("them", pastHidden, "", "Stub", "User", "", false, true),
+		}, ""))
+		_, out, _ := handleSearchPastMeetingParticipants(context.Background(), stubCallToolRequest(), SearchPastMeetingParticipantsArgs{PastMeetingID: pastHidden})
+		got := participantsOf(t, out)
+		if uids(got) != "me" || got[0]["job_title"] != "Engineer" {
+			t.Fatalf("own record only, as stored: %v", got)
+		}
+		result := out.(participantSearchResult)
+		if *result.Records != 1 || *result.People != 1 {
+			t.Errorf("the stranger's record counts nowhere: %d/%d", *result.Records, *result.People)
+		}
+	})
 }
 
 func TestParticipants_DedupeFalseProjectsRawRecords(t *testing.T) {
@@ -244,10 +322,10 @@ func TestParticipants_PlainScopeDecidesPerMeetingOnThePage(t *testing.T) {
 	if res.IsError {
 		t.Fatal(allResultText(t, res))
 	}
-	// The caller's three own records merge into one person (dedupe keys on
-	// e-mail across the page, as for every caller); the hidden meeting's
+	// People are merged within each meeting, never across them, so the
+	// caller's own record appears once per meeting; the hidden meeting's
 	// other records are dropped.
-	if got := uids(participantsOf(t, out)); got != "host-11 att-11 self-11 host-22" {
+	if got := uids(participantsOf(t, out)); got != "host-11 att-11 self-11 host-22 self-22 self-55" {
 		t.Errorf("records = %q", got)
 	}
 	result := out.(participantSearchResult)
@@ -273,15 +351,39 @@ func TestParticipants_DateRangeAppliesTheRulePerMeeting(t *testing.T) {
 	if res.IsError {
 		t.Fatal(allResultText(t, res))
 	}
-	if got := uids(participantsOf(t, out)); got != "host-11 att-11 self-11 host-22" {
+	if got := uids(participantsOf(t, out)); got != "host-11 att-11 self-11 host-22 self-22 self-55" {
 		t.Errorf("records = %q", got)
 	}
 	result := out.(participantSearchResult)
-	if result.Meetings == nil || *result.Meetings != 3 || *result.People != 4 || *result.Records != 4 {
+	if result.Meetings == nil || *result.Meetings != 3 || *result.People != 6 || *result.Records != 6 {
 		t.Errorf("totals must describe what is returned: meetings=%v people=%v records=%v", result.Meetings, result.People, result.Records)
 	}
 	if len(api.AccessCheckBodies()) != 1 {
 		t.Error("one relation batch for every resolved meeting")
+	}
+}
+
+func TestParticipants_DateRangeMeetingsTotalCountsShownMeetingsOnly(t *testing.T) {
+	// The caller has no own record in the hidden meeting, so it contributes
+	// nothing and is not counted.
+	api := setupParticipantTest(t)
+	api.GrantRelations("v1_past_meeting:" + pastOrganized + "#organizer")
+	api.Respond(resourcesPath, page([]string{pastMeetingDoc(pastOrganized), pastMeetingDoc(pastHidden)}, ""))
+	api.Respond(resourcesPath, pastDocs(pastOrganized, pastHidden))
+	api.Respond(resourcesPath, page(meetingRoster(pastOrganized), ""))
+	api.Respond(resourcesPath, page([]string{participantDocFor("att-55", pastHidden, "att55@example.test", "Atty", "A", "", false, true)}, ""))
+	_, out, _ := handleSearchPastMeetingParticipants(context.Background(), stubCallToolRequest(), SearchPastMeetingParticipantsArgs{ProjectUID: "P1", DateFrom: "2026-06-01"})
+	result := out.(participantSearchResult)
+	if result.Meetings == nil || *result.Meetings != 1 || *result.Records != 3 || len(result.Warnings) != 0 {
+		t.Errorf("meetings=%v records=%v warnings=%v", result.Meetings, result.Records, result.Warnings)
+	}
+}
+
+func TestParticipants_MaxMeetingsValidatedOnTheCountPath(t *testing.T) {
+	api := setupParticipantTest(t)
+	res, _, _ := handleSearchPastMeetingParticipants(context.Background(), stubCallToolRequest(), SearchPastMeetingParticipantsArgs{ProjectUID: "P1", CountOnly: true, MaxMeetings: participantHardMaxMeetings + 1})
+	if !res.IsError || !strings.Contains(allResultText(t, res), "max_meetings") || len(api.Requests()) != 0 {
+		t.Fatalf("expected the max_meetings refusal before any call, got %s", allResultText(t, res))
 	}
 }
 

@@ -272,9 +272,16 @@ rule in user terms.
   an empty page next to a failure would read as absence.
 - **Never count or name what was withheld.** Searches keep the `page_token`,
   return short pages and use the `searchWarnings` contract; totals describe
-  what is returned; lookups whose record the rule drops return
-  `lookupNotVisibleMessage`, the same text as a record that is not visible
-  at all.
+  what is returned; a lookup whose record the rule drops returns the very
+  text that lookup gives a record that is not visible at all: the
+  query-backed lookups `lookupNotVisibleMessage`, a service-backed lookup
+  (`get_committee_member`) the text `friendlyAPIError` gives that service's
+  404 (`serviceLookupNotVisibleMessage`). Participants are de-duplicated
+  only after the records the caller is not shown are dropped, and only
+  within one meeting, so a merge never carries a hidden record's fields.
+- **Count filters on people fields are refused too**: `count_lfx_resources`
+  refuses `filters_or` / `filters_all` on the people fields the search tools
+  leave out of meeting and past-meeting records.
 - **Refuse filters that can probe for a person** (`name`, `org_name`,
   e-mail or username tags, `filters_or` / `filters_all` on people fields)
   wherever the rule would not show the caller that list, with a tool error

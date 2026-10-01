@@ -71,7 +71,7 @@ func registrantViews(ctx context.Context, clients *lfxv2.Clients, tokenInfo *aut
 		return nil, err
 	}
 	for id := range registered {
-		if _, known := views[id]; known {
+		if view, known := views[id]; known && view == registrantHidden {
 			views[id] = registrantRoster
 		}
 	}
@@ -265,8 +265,10 @@ func anyCommitteeMember(relations map[string]bool, committees []string) bool {
 }
 
 // pastMeetingAccessDocs reads the v1_past_meeting records for ids, as the
-// caller, in chunks of peopleFilterChunk on meeting_and_occurrence_id. An
-// id without a record maps to the zero value (not public, no committees).
+// caller, in chunks of peopleFilterChunk on meeting_and_occurrence_id. The
+// meeting's groups are its committees list plus the single committee_uid
+// the record also carries. An id without a record maps to the zero value
+// (not public, no committees).
 func pastMeetingAccessDocs(ctx context.Context, clients *lfxv2.Clients, ids []string) (map[string]pastMeetingAccessDoc, error) {
 	resourceType := pastMeetingResourceType
 	docs := make(map[string]pastMeetingAccessDoc, len(ids))
@@ -299,6 +301,9 @@ func pastMeetingAccessDocs(ctx context.Context, clients *lfxv2.Clients, ids []st
 				}
 				restricted, _ := data["restricted"].(bool)
 				doc := pastMeetingAccessDoc{public: dataString(data, "visibility") == "public" && !restricted}
+				if uid := dataString(data, "committee_uid"); uid != "" {
+					doc.committees = append(doc.committees, uid)
+				}
 				if committees, ok := data["committees"].([]any); ok {
 					for _, c := range committees {
 						if committee, ok := c.(map[string]any); ok {
@@ -308,6 +313,7 @@ func pastMeetingAccessDocs(ctx context.Context, clients *lfxv2.Clients, ids []st
 						}
 					}
 				}
+				doc.committees = dedupeStrings(doc.committees)
 				docs[id] = doc
 			}
 			if !hasPageToken(result.PageToken) {
@@ -319,41 +325,88 @@ func pastMeetingAccessDocs(ctx context.Context, clients *lfxv2.Clients, ids []st
 	return docs, nil
 }
 
-// projectParticipant reduces one v1_past_meeting_participant record to the
-// view. The caller's own record is never reduced. ok is false when the
-// record is not shown at all.
-func projectParticipant(data map[string]any, view participantView, tokenInfo *auth.TokenInfo) (out map[string]any, ok bool) {
+// participantShown reports whether one raw v1_past_meeting_participant record
+// is shown at all under the view: every record of a meeting the caller
+// organizes, the caller's own record (matched on the raw record), and the
+// host records of a meeting the caller has full access to.
+func participantShown(data map[string]any, view participantView, tokenInfo *auth.TokenInfo) bool {
 	if view == participantOrganizer || isOwnRecord(data, tokenInfo) {
-		return data, true
+		return true
 	}
 	if view != participantFullAccess {
-		return nil, false
+		return false
 	}
-	if host, _ := data["host"].(bool); !host {
-		return nil, false
-	}
-	return keepFields(data, "uid", "meeting_and_occurrence_id", "first_name", "last_name", "host", "is_attended"), true
+	host, _ := data["host"].(bool)
+	return host
 }
 
-// filterParticipants applies the participant rule to participant resources
-// (de-duplicated first by the caller when dedupe is on, since identity
-// matching needs the full records). views must cover every
+// projectParticipant reduces one shown record to the view. The caller's own
+// record and an organizer's records are never reduced; a host record of a
+// full-access meeting keeps the name and flags the join page renders.
+func projectParticipant(data map[string]any, view participantView, tokenInfo *auth.TokenInfo) map[string]any {
+	if view == participantOrganizer || isOwnRecord(data, tokenInfo) {
+		return data
+	}
+	return keepFields(data, "uid", "meeting_and_occurrence_id", "first_name", "last_name", "host", "is_attended")
+}
+
+// selectParticipants is the first of the two passes the participant rule
+// takes over raw records: it drops every record participantShown rejects,
+// with full fields intact, before any de-duplication. Identity matching then
+// only ever merges records the caller is shown. views must cover every
 // meeting_and_occurrence_id present; a record without one is not shown.
-func filterParticipants(resources []*querysvc.Resource, views map[string]participantView, tokenInfo *auth.TokenInfo) []*querysvc.Resource {
+func selectParticipants(resources []*querysvc.Resource, views map[string]participantView, tokenInfo *auth.TokenInfo) []*querysvc.Resource {
 	out := make([]*querysvc.Resource, 0, len(resources))
 	for _, r := range resources {
 		data := resourceData(r)
 		view, known := views[dataString(data, "meeting_and_occurrence_id")]
-		if data == nil || !known {
+		if data == nil || !known || !participantShown(data, view, tokenInfo) {
 			continue
 		}
-		projected, ok := projectParticipant(data, view, tokenInfo)
-		if !ok {
-			continue
-		}
-		out = append(out, &querysvc.Resource{Type: r.Type, ID: r.ID, Data: projected})
+		out = append(out, r)
 	}
 	return out
+}
+
+// filterParticipants is the second pass: it reduces each shown record's
+// fields to its meeting's view. It also re-applies selectParticipants, so a
+// record that was not selected first is never returned.
+func filterParticipants(resources []*querysvc.Resource, views map[string]participantView, tokenInfo *auth.TokenInfo) []*querysvc.Resource {
+	selected := selectParticipants(resources, views, tokenInfo)
+	out := make([]*querysvc.Resource, 0, len(selected))
+	for _, r := range selected {
+		data := resourceData(r)
+		view := views[dataString(data, "meeting_and_occurrence_id")]
+		out = append(out, &querysvc.Resource{Type: r.Type, ID: r.ID, Data: projectParticipant(data, view, tokenInfo)})
+	}
+	return out
+}
+
+// dedupeParticipantsPerMeeting de-duplicates people within each past
+// meeting, never across meetings, keeping the meetings and the records in
+// first-encounter order. A caller without full view may hold different
+// views of the meetings on one page; merging across them would let one
+// meeting's record decide, or fill in, another's.
+func dedupeParticipantsPerMeeting(resources []*querysvc.Resource) []*querysvc.Resource {
+	var order []string
+	groups := make(map[string][]*querysvc.Resource)
+	for _, r := range resources {
+		id := dataString(resourceData(r), "meeting_and_occurrence_id")
+		if _, seen := groups[id]; !seen {
+			order = append(order, id)
+		}
+		groups[id] = append(groups[id], r)
+	}
+	out := make([]*querysvc.Resource, 0, len(resources))
+	for _, id := range order {
+		out = append(out, dedupeParticipants(groups[id])...)
+	}
+	return out
+}
+
+// distinctMeetings counts the distinct meeting_and_occurrence_id values.
+func distinctMeetings(resources []*querysvc.Resource) int {
+	return len(dataStrings(resources, "meeting_and_occurrence_id"))
 }
 
 // trimPastMeetingPeopleFields reduces a v1_past_meeting record in place:
