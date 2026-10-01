@@ -228,7 +228,7 @@ Two scope constants are defined in `internal/tools/scopes.go`:
 
 Registration and enforcement then diverge by tool class:
 
-- **Read tools** are registered when `canRead`, and enforcement ends there — there is nothing further to check at call time.
+- **Read tools** are registered when `canRead`, and scope enforcement ends there — there is nothing further about scopes to check at call time. (The people tools additionally shape their *results* per caller after the upstream call; see [People data for non-staff callers](#people-data-for-non-staff-callers). That is not a second authorization gate: it never widens what a tool returns.)
 - **Write tools** (listed in `tools.ManageScopeTools`) are *also* registered when `canRead` — not gated on `canManage` — so a read-only caller can still discover the tool and its input schema. `manage:all` is enforced at the HTTP layer instead, by `requireManageScopeHTTP` in `main.go`: it inspects the JSON-RPC body of each `/mcp` POST, and a `tools/call` for a name in `tools.ManageScopeTools` from a caller without `canManage` gets an HTTP `403` with a `WWW-Authenticate: Bearer error="insufficient_scope"` challenge, without ever reaching the MCP handler. This lets an OAuth client request `read:all` up front and step up to `manage:all` only when the user actually attempts a write, rather than needing both scopes from the first consent screen. The OAuth Protected Resource Metadata document (`scopes_supported`) accordingly advertises both `read:all` and `manage:all` by default (`tools.DefaultScopes()`), so a client can request both up front if it chooses to — the per-call 403 is still what tells a caller which scope a specific tool needs, not the PRM. A client that ignores advertised scopes entirely (see `tools.IsScopeBlindClient`) is treated as having requested `tools.DefaultScopes()` (including `manage:all`): such a client offers no consent UI to withhold a scope from, so it gets the same default behavior any other client gets by requesting both scopes up front, and users rely on per-call "ask" policies for write tools regardless of how the scope was granted.
 - **Staff-only tools** (the LFX Lens-backed tools and their guidance) are gated on the `lf_staff` JWT claim in addition to `canRead`, and remain absent from `tools/list` for non-staff callers — the claim cannot be stepped up like a scope, so there is nothing to discover ahead of time.
 
@@ -236,7 +236,56 @@ In stdio mode (no auth token), `callerToken` is `nil`, so `canRead`/`canManage`/
 
 Adding a new write tool means registering it under `canRead` in `newServer()` (like a read tool) and adding its name to `tools.ManageScopeTools` in `internal/tools/scopes.go`, so the step-up middleware knows to gate it at call time.
 
-**Staff-only tools.** The LFX Lens-backed tools and their guidance (the names in `staffOnlyTools`, `cmd/lfx-mcp-server/main_test.go`) are registered only when `canRead && isStaff`. `isStaff` is true for LF staff user tokens (`tools.IsLFStaff`), machine tokens (`tools.IsMachineAccount`) and a nil token (stdio, or HTTP with no `-mcp_api.auth_servers` configured); for every other caller these tools never appear in `tools/list`. A new tool of that kind uses the same gate and is added to `staffOnlyTools`, which `TestNewServer_LensToolsAreStaffOnly` checks.
+**Staff-only tools.** The LFX Lens-backed tools and their guidance (the names in `staffOnlyTools`, `cmd/lfx-mcp-server/main_test.go`) are registered only when `canRead && isStaff`. `isStaff` is `tools.IsStaffCaller(callerToken)`: true for LF staff user tokens (`tools.IsLFStaff`), machine tokens (`tools.IsMachineAccount`) and a nil token (stdio, or HTTP with no `-mcp_api.auth_servers` configured); for every other caller these tools never appear in `tools/list`. A new tool of that kind uses the same gate and is added to `staffOnlyTools`, which `TestNewServer_LensToolsAreStaffOnly` checks.
+
+### People data for non-staff callers
+
+Tools that return people records (group members, meeting registrants, past
+meeting participants, and the people fields of meeting, past meeting,
+recording, transcript and summary records) return, to a caller without
+**full view**, only what LFX Self Serve renders on screen to that same
+person. The rules live in `internal/tools/people_visibility.go` (groups) and
+`people_visibility_meetings.go` (meetings); the tool descriptions state each
+rule in user terms.
+
+- **Full view** is `tools.IsFullViewCaller(callerToken)`: `IsStaffCaller`
+  (nil token, `lf_staff`, machine account) **or** `IsAPIKeyCaller` (a static
+  API key; such integrations act upstream with the M2M token, whose principal
+  holds no relations, so filtering them would return nothing). API keys are
+  full view without being staff: the Lens tools stay absent for them.
+  `newServer()` decides once per request and hands the flag to handlers
+  through the context (`tools.WithFullView`, a receiving middleware like
+  `tools.WithLogger`); `tools.HasFullView(ctx)` reads it and reports
+  **false when the flag is absent**, so a handler reached without the
+  middleware narrows rather than widens.
+- **Filtering happens in the handler, after the upstream call**, never at
+  registration and never through the allowlist. A full-view caller takes
+  none of these paths and makes no extra upstream call. The rules only ever
+  remove records or fields; a tool never returns anything it did not return
+  before.
+- **Predicates run as the caller**, with the exchanged token:
+  `Clients.CheckRelations` (the V2 access-check, batched, de-duplicated,
+  strict), the committee settings read, and query-service lookups. Never
+  with the M2M token.
+- **Fail closed.** If any predicate call fails for a non-full-view caller
+  the tool returns `peopleVisibilityUnavailableMessage` and **no records**;
+  an empty page next to a failure would read as absence.
+- **Never count or name what was withheld.** Searches keep the `page_token`,
+  return short pages and use the `searchWarnings` contract; totals describe
+  what is returned; lookups whose record the rule drops return
+  `lookupNotVisibleMessage`, the same text as a record that is not visible
+  at all.
+- **Refuse filters that can probe for a person** (`name`, `org_name`,
+  e-mail or username tags, `filters_or` / `filters_all` on people fields)
+  wherever the rule would not show the caller that list, with a tool error
+  that names the allowed form. `count_lfx_resources` applies the same gate
+  per people type (`peopleCountGate`).
+
+Adding a people tool: decide the view per parent object with one of the
+`*Views` predicates (or add one next to them), project each record with the
+matching `project*` function after the query, short-circuit on
+`HasFullView(ctx)`, and add the tool to the tests that walk the people tools
+(`TestPeopleTools_*` in `internal/tools`).
 
 ### Tool Implementation Steps
 

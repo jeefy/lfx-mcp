@@ -25,7 +25,7 @@ managed in LFX Self Serve, as they are today.
 **You can:**
 
 - find projects, and the groups, meetings and mailing lists you take part in or have a role on;
-- look up group members, meeting registrants and attendees, under the same access rules as LFX Self Serve;
+- look up group members, meeting registrants and attendees, as LFX Self Serve shows them to you;
 - get past meeting summaries, and links to recordings and transcripts, when the meeting shares them with you, or
   you organize the meeting or have a manager or viewer role on its group or project;
 - get counts and overviews across the projects, groups and meetings you can see;

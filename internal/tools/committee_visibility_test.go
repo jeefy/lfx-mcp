@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // Group (committee member) fixtures. UIDs are valid UUIDs because the
@@ -603,5 +605,44 @@ func TestKeepFields_NestedPaths(t *testing.T) {
 	// The source must be untouched.
 	if len(data["org"].(map[string]any)) != 3 {
 		t.Error("keepFields must not mutate its input")
+	}
+}
+
+// TestPeopleToolsDescribeTheVisibilityRule pins the one clause each people
+// search tool carries about what a caller gets, in both terminology modes,
+// in user terms, with no figures and no mention of other products.
+func TestPeopleToolsDescribeTheVisibilityRule(t *testing.T) {
+	for _, tc := range []struct {
+		toolName string
+		register func(*mcp.Server)
+		want     string
+	}{
+		{"search_committee_members", func(s *mcp.Server) { RegisterSearchCommitteeMembers(s, false) },
+			"You get the member list LFX Self Serve shows you: the full list for committees you manage, otherwise their chairs."},
+		{"search_group_members", func(s *mcp.Server) { RegisterSearchCommitteeMembers(s, true) },
+			"You get the member list LFX Self Serve shows you: the full list for groups you manage, otherwise their chairs."},
+		{"search_meeting_registrants", func(s *mcp.Server) { RegisterSearchMeetingRegistrants(s, false) },
+			"You get the registrant list LFX Self Serve shows you: the full list for meetings you organize, the guest list without e-mail for meetings you are registered for, nothing for others."},
+		{"search_meeting_registrants", func(s *mcp.Server) { RegisterSearchMeetingRegistrants(s, true) },
+			"You get the registrant list LFX Self Serve shows you: the full list for meetings you organize, the guest list without e-mail for meetings you are registered for, nothing for others."},
+		{"search_past_meeting_participants", func(s *mcp.Server) { RegisterSearchPastMeetingParticipants(s, false) },
+			"You get the participant list LFX Self Serve shows you: the full list for past meetings you organize, the hosts' names and your own record for meetings you have access to, only your own record otherwise."},
+		{"search_past_meeting_participants", func(s *mcp.Server) { RegisterSearchPastMeetingParticipants(s, true) },
+			"You get the participant list LFX Self Serve shows you: the full list for past meetings you organize, the hosts' names and your own record for meetings you have access to, only your own record otherwise."},
+	} {
+		t.Run(tc.toolName, func(t *testing.T) {
+			tool := listRegisteredTool(t, tc.toolName, tc.register)
+			if !strings.Contains(tool.Description, tc.want) {
+				t.Errorf("%s description missing %q", tc.toolName, tc.want)
+			}
+			if n := len(tool.Description); n > schemaDescriptionBudget {
+				t.Errorf("description is %d bytes, over the %d budget", n, schemaDescriptionBudget)
+			}
+			for _, banned := range []string{"Insights", "%", "staff"} {
+				if strings.Contains(tool.Description, banned) {
+					t.Errorf("description must not contain %q", banned)
+				}
+			}
+		})
 	}
 }
