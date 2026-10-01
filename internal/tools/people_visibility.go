@@ -405,8 +405,9 @@ var meetingCountDateFields = []string{"start_time", "end_time", "created_at", "u
 // PeopleToolNames are the tools whose results follow the people rule above,
 // under both terminology modes. The tests in internal/tools walk every name
 // (people_tools_registry_test.go) and cmd/lfx-mcp-server checks that every
-// tool newServer registers is either here or declared not to return people
-// data, so a new tool cannot ship without that decision.
+// tool newServer registers is either here or declared in its nonPeopleTools
+// with a reason (no people data, or out of this rule's scope), so a new tool
+// cannot ship without that decision.
 var PeopleToolNames = []string{
 	"search_committee_members", "search_group_members",
 	"get_committee_member", "get_group_member",

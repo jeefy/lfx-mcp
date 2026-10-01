@@ -38,8 +38,11 @@ var errDrainPageCap = fmt.Errorf("paging exceeded the %d-page cap; narrow the qu
 // variable so tests can lower it to reach the cap.
 var participantMaxRequests = 2000
 
-// errRequestBudget is returned when a date-range call exhausts participantMaxRequests.
-var errRequestBudget = fmt.Errorf("the date range needed more than %d query-service requests; narrow the range, add attended_only or org_name, or use count_only", participantMaxRequests)
+// errRequestBudget returns the error for a date-range call that exhausts
+// participantMaxRequests, built when it happens so the figure is current.
+func errRequestBudget() error {
+	return fmt.Errorf("the date range needed more than %d query-service requests; narrow the range, add attended_only or org_name, or use count_only", participantMaxRequests)
+}
 
 // requestBudget counts upstream calls across the steps of one tool call.
 type requestBudget struct{ remaining int }
@@ -47,7 +50,7 @@ type requestBudget struct{ remaining int }
 // take consumes one request; it returns errRequestBudget when none are left.
 func (b *requestBudget) take() error {
 	if b.remaining <= 0 {
-		return errRequestBudget
+		return errRequestBudget()
 	}
 	b.remaining--
 	return nil

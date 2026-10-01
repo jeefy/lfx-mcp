@@ -267,7 +267,9 @@ Notes:
 
 People data (group members, meeting registrants, past meeting participants and the people fields of
 meeting records) is returned to non-staff callers as LFX Self Serve shows it to them on screen; LF
-staff, machine and API-key callers get the records as the services return them.
+staff, machine and API-key callers get the records as the services return them. Mailing-list
+members, member records, membership key contacts, org committee seats and project settings are
+not under this rule yet and are returned as the services return them, pending product decisions.
 
 ### Projects
 

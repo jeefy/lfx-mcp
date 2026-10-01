@@ -246,7 +246,10 @@ recording, transcript and summary records) return, to a caller without
 **full view**, only what LFX Self Serve renders on screen to that same
 person. The rules live in `internal/tools/people_visibility.go` (groups) and
 `people_visibility_meetings.go` (meetings); the tool descriptions state each
-rule in user terms.
+rule in user terms. Mailing-list members, member records, membership key
+contacts, org committee seats and project settings are not under the rule
+yet (product decisions pending); `nonPeopleTools` in
+`cmd/lfx-mcp-server/main_test.go` records that.
 
 - **Full view** is `tools.IsFullViewCaller(callerToken)`: `IsStaffCaller`
   (nil token, `lf_staff`, machine account) **or** `IsAPIKeyCaller` (a static

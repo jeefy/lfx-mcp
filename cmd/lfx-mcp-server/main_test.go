@@ -118,9 +118,11 @@ var staffOnlyTools = []string{
 // TestNewServer_EveryToolDecidesOnPeopleData fails until it is.
 var nonPeopleTools = []string{
 	// No people records.
-	"audit_committee_coverage", "search_committees", "search_groups", "search_projects", "get_project",
+	"audit_committee_coverage", "search_committees", "search_groups", "search_projects",
 	"search_b2b_orgs", "get_mailing_list", "get_mailing_list_service", "search_mailing_lists",
-	"list_email_templates", "list_discord_roles", "find_discord_role", "user_info",
+	"list_email_templates", "list_discord_roles", "find_discord_role",
+	// The caller's own profile.
+	"user_info",
 	// count_lfx_resources has its own gate (peopleCountGate).
 	"count_lfx_resources",
 	// Write tools echo what the writer sent; only a writer reaches them.
@@ -130,15 +132,18 @@ var nonPeopleTools = []string{
 	"create_group_member", "update_group_member", "delete_group_member",
 	"create_membership_key_contact", "update_membership_key_contact", "delete_membership_key_contact",
 	"send_email", "assign_discord_role",
-	// Member onboarding and the staff-only Lens tools: full-view callers in practice.
+	// Discord lookups: gated per project to its writers by AuthorizeProject
+	// (RelationWriter); outside this rule's scope.
 	"find_discord_user", "check_discord_user_role",
+	// Staff-only Lens tools: registered for isStaff callers only.
 	"query_lfx_lens", "explore_lfx_semantic_layer", "query_lfx_semantic_layer",
 	"query_lfx_standard_metrics", "read_lfx_semantic_layer_guidance", "read_lfx_standard_metrics_guidance",
 	// Out of the rule's scope until the product decides what LFX Self Serve
-	// shows for them (the PR for lfx-self-serve#3130 says so): mailing-list
-	// members, member records, membership key contacts, org committee seats.
+	// shows for them (README "People data"): mailing-list members, member
+	// records, membership key contacts, org committee seats, and project
+	// settings (writers, auditors, meeting_coordinators).
 	"search_mailing_list_members", "get_mailing_list_member", "search_members", "get_member_membership",
-	"get_membership_key_contacts", "get_membership_key_contact", "get_org_committee_seats",
+	"get_membership_key_contacts", "get_membership_key_contact", "get_org_committee_seats", "get_project",
 }
 
 // TestNewServer_EveryToolDecidesOnPeopleData pins that every tool newServer
