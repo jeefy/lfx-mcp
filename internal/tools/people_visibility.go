@@ -306,14 +306,22 @@ func dataStrings(resources []*querysvc.Resource, key string) []string {
 // --- count_lfx_resources ---
 
 // peopleCountGate decides whether a count_lfx_resources call on a people
-// type is one LFX Self Serve shows the caller. It returns the refusal text,
-// or "" to proceed. Types that are not people records pass unchanged.
+// type is one LFX Self Serve shows the caller. It returns the refusal text
+// (or "" to proceed) and an error when a predicate could not be evaluated.
+// Types that are not people records pass unchanged.
 //
 //   - committee_member: member counts are on every group page. Allowed with
 //     a committee: or project: parent and committee_uid:, project_uid:,
 //     committee_category: or voting_status: tags; nothing that names a
 //     person (name, filters_or, filters_all, other tags) and no date range.
-func peopleCountGate(args CountLFXResourcesArgs) string {
+//   - v1_meeting_registrant: the count is shown to a meeting's organizers
+//     and registrants. Allowed only as parent=meeting:<id> with no other
+//     filter, when the caller has one of those two views.
+//   - v1_past_meeting_participant: attendance counts are shown to callers
+//     with full access to the past meeting. Allowed only as
+//     parent=past_meeting:<id>, optionally with the is_attended:true tag,
+//     when the caller is its organizer or has full access.
+func peopleCountGate(ctx context.Context, clients *lfxv2.Clients, tokenInfo *auth.TokenInfo, args CountLFXResourcesArgs) (refusal string, err error) {
 	hasPersonFilter := args.Name != "" || len(args.FiltersOr) > 0 || len(args.FiltersAll) > 0
 	hasDateRange := args.DateField != "" || args.DateFrom != "" || args.DateTo != ""
 	switch args.Type {
@@ -323,10 +331,40 @@ func peopleCountGate(args CountLFXResourcesArgs) string {
 		tagPrefixes := []string{"committee_uid:", "project_uid:", "committee_category:", "voting_status:"}
 		if hasPersonFilter || hasDateRange || !parentOK ||
 			!tagsHaveOnlyPrefixes(args.Tags, tagPrefixes...) || !tagsHaveOnlyPrefixes(args.TagsAll, tagPrefixes...) {
-			return countRefusal(args.Type, allowed)
+			return countRefusal(args.Type, allowed), nil
 		}
+		return "", nil
+	case meetingRegistrantResourceType:
+		allowed := "parent=meeting:<id> alone, for a meeting you organize or are registered for"
+		id, ok := strings.CutPrefix(args.Parent, "meeting:")
+		if !ok || id == "" || hasPersonFilter || hasDateRange || len(args.Tags) > 0 || len(args.TagsAll) > 0 {
+			return countRefusal(args.Type, allowed), nil
+		}
+		views, err := registrantViews(ctx, clients, tokenInfo, []string{id})
+		if err != nil {
+			return "", err
+		}
+		if views[id] == registrantHidden {
+			return countRefusal(args.Type, allowed), nil
+		}
+		return "", nil
+	case pastMeetingParticipantResourceType:
+		allowed := "parent=past_meeting:<meeting_and_occurrence_id>, optionally with the is_attended:true tag, for a past meeting you organize or have full access to"
+		id, ok := strings.CutPrefix(args.Parent, "past_meeting:")
+		if !ok || id == "" || hasPersonFilter || hasDateRange ||
+			!tagsAreExactly(args.Tags, "is_attended:true") || !tagsAreExactly(args.TagsAll, "is_attended:true") {
+			return countRefusal(args.Type, allowed), nil
+		}
+		views, err := participantViews(ctx, clients, []string{id})
+		if err != nil {
+			return "", err
+		}
+		if views[id] == participantOwnOnly {
+			return countRefusal(args.Type, allowed), nil
+		}
+		return "", nil
 	}
-	return ""
+	return "", nil
 }
 
 // countRefusal is the tool error refusing a count of a people type for a

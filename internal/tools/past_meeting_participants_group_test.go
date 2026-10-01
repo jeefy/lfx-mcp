@@ -5,7 +5,6 @@
 package tools
 
 import (
-	"context"
 	"encoding/json"
 	"reflect"
 	"strings"
@@ -145,9 +144,9 @@ func TestParticipantsGroupMode_DelegatesToSameHandler(t *testing.T) {
 				api.Respond(countPath, `{"count":2,"has_more":false}`)
 				var result *mcp.CallToolResult
 				if asGroups {
-					result, _, err = handleSearchPastMeetingParticipantsGroupMode(context.Background(), stubCallToolRequest(), tc.args)
+					result, _, err = handleSearchPastMeetingParticipantsGroupMode(fullViewCtx(), stubCallToolRequest(), tc.args)
 				} else {
-					result, _, err = handleSearchPastMeetingParticipants(context.Background(), stubCallToolRequest(), canonical)
+					result, _, err = handleSearchPastMeetingParticipants(fullViewCtx(), stubCallToolRequest(), canonical)
 				}
 				if err != nil {
 					t.Fatal(err)

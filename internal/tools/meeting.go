@@ -458,6 +458,9 @@ func handleSearchMeetings(ctx context.Context, req *mcp.CallToolRequest, args Se
 			res.Data = trimMeetingResultFields(res.Data)
 		}
 	}
+	if !HasFullView(ctx) {
+		trimResourcesData(result.Resources, trimMeetingPeopleFields)
+	}
 
 	out := newResourceSearchResult("meetings", result, pageSize, args.PageToken != "")
 
@@ -553,6 +556,9 @@ func handleGetMeeting(ctx context.Context, req *mcp.CallToolRequest, args GetMee
 	}
 
 	result.Resources[0].Data = trimMeetingResultFields(result.Resources[0].Data)
+	if !HasFullView(ctx) {
+		trimMeetingPeopleFields(result.Resources[0].Data)
+	}
 
 	prettyJSON, err := json.MarshalIndent(result.Resources[0], "", "  ")
 	if err != nil {
@@ -633,10 +639,42 @@ func handleSearchMeetingRegistrants(ctx context.Context, req *mcp.CallToolReques
 
 	logger.InfoContext(ctx, "searching meeting registrants", "meeting_id", args.MeetingID, "committee_uid", args.CommitteeUID, "name", args.Name, "page_size", pageSize)
 
+	// Without full view, the result follows what LFX Self Serve shows the
+	// caller of each meeting (people_visibility_meetings.go). name, which
+	// can probe for a person, is accepted only for one meeting the caller
+	// organizes.
+	fullView := HasFullView(ctx)
+	var views map[string]registrantView
+	if !fullView && args.Name != "" {
+		const refusal = "Error: name is available for one meeting at a time that you organize: set meeting_id to a meeting you organize."
+		if args.MeetingID == "" {
+			return nil, resourceSearchResult{}, toolError(refusal)
+		}
+		views, err = registrantViews(ctx, clients, tokenInfo, []string{args.MeetingID})
+		if err != nil {
+			logger.ErrorContext(ctx, "registrant visibility check failed", "error", err)
+			return nil, resourceSearchResult{}, toolError(peopleVisibilityUnavailableMessage)
+		}
+		if views[args.MeetingID] != registrantOrganizer {
+			return nil, resourceSearchResult{}, toolError(refusal)
+		}
+	}
+
 	result, err := clients.QuerySvc.QueryResources(ctx, payload)
 	if err != nil {
 		logger.ErrorContext(ctx, "QueryResources failed", "error", err)
 		return nil, resourceSearchResult{}, toolError(friendlyAPIError("failed to search meeting registrants", err))
+	}
+
+	if !fullView {
+		if views == nil {
+			views, err = registrantViews(ctx, clients, tokenInfo, dataStrings(result.Resources, "meeting_id"))
+			if err != nil {
+				logger.ErrorContext(ctx, "registrant visibility check failed", "error", err)
+				return nil, resourceSearchResult{}, toolError(peopleVisibilityUnavailableMessage)
+			}
+		}
+		result.Resources = filterRegistrants(result.Resources, views, tokenInfo)
 	}
 
 	out := newResourceSearchResult("meeting registrants", result, pageSize, args.PageToken != "")
@@ -725,6 +763,22 @@ func handleGetMeetingRegistrant(ctx context.Context, req *mcp.CallToolRequest, a
 			},
 			IsError: true,
 		}, nil, nil
+	}
+
+	// Without full view, the record follows what LFX Self Serve shows the
+	// caller of its meeting; a record it does not show reads like one that
+	// is not visible at all.
+	if !HasFullView(ctx) {
+		views, err := registrantViews(ctx, clients, tokenInfo, dataStrings(result.Resources[:1], "meeting_id"))
+		if err != nil {
+			logger.ErrorContext(ctx, "registrant visibility check failed", "error", err)
+			return errorResult(peopleVisibilityUnavailableMessage), nil, nil
+		}
+		shown := filterRegistrants(result.Resources[:1], views, tokenInfo)
+		if len(shown) == 0 {
+			return errorResult(lookupNotVisibleMessage("meeting registrant", args.UID)), nil, nil
+		}
+		result.Resources[0] = shown[0]
 	}
 
 	prettyJSON, err := json.MarshalIndent(result.Resources[0], "", "  ")
@@ -821,6 +875,10 @@ func handleSearchPastMeetingSummaries(ctx context.Context, req *mcp.CallToolRequ
 		return nil, resourceSearchResult{}, toolError(friendlyAPIError("failed to search past meeting summaries", err))
 	}
 
+	if !HasFullView(ctx) {
+		trimResourcesData(result.Resources, trimSummaryPeopleFields)
+	}
+
 	out := newResourceSearchResult("past-meeting summaries", result, pageSize, args.PageToken != "")
 
 	prettyJSON, err := json.MarshalIndent(out, "", "  ")
@@ -905,6 +963,28 @@ func handleGetPastMeetingResource(ctx context.Context, req *mcp.CallToolRequest,
 			},
 			IsError: true,
 		}, nil, nil
+	}
+
+	// Without full view, the record follows what LFX Self Serve shows the
+	// caller (people_visibility_meetings.go): a participant record it does
+	// not show reads like one that is not visible at all; a summary keeps
+	// its content and loses the host and editor fields.
+	if !HasFullView(ctx) {
+		switch resourceType {
+		case pastMeetingParticipantResourceType:
+			views, err := participantViews(ctx, clients, dataStrings(result.Resources[:1], "meeting_and_occurrence_id"))
+			if err != nil {
+				logger.ErrorContext(ctx, "participant visibility check failed", "error", err)
+				return errorResult(peopleVisibilityUnavailableMessage), nil, nil
+			}
+			shown := filterParticipants(result.Resources[:1], views, tokenInfo)
+			if len(shown) == 0 {
+				return errorResult(lookupNotVisibleMessage(resourceLabel, uid)), nil, nil
+			}
+			result.Resources[0] = shown[0]
+		case pastMeetingSummaryResourceType:
+			trimSummaryPeopleFields(result.Resources[0].Data)
+		}
 	}
 
 	prettyJSON, err := json.MarshalIndent(result.Resources[0], "", "  ")
@@ -1120,6 +1200,9 @@ func handleSearchPastMeetings(ctx context.Context, req *mcp.CallToolRequest, arg
 			res.Data = trimMeetingResultFields(res.Data)
 		}
 	}
+	if !HasFullView(ctx) {
+		trimResourcesData(result.Resources, trimPastMeetingPeopleFields)
+	}
 
 	out := newResourceSearchResult("past meetings", result, pageSize, args.PageToken != "")
 
@@ -1264,6 +1347,16 @@ func handleGetPastMeeting(ctx context.Context, req *mcp.CallToolRequest, args Ge
 		warnings = append(warnings, pastMeetingChildNotVisibleNote("transcript"))
 	default:
 		out.Transcript = transcript
+	}
+
+	// No screen renders the host or editors of a recording or transcript.
+	if !HasFullView(ctx) {
+		if out.Recording != nil {
+			trimPastMeetingArtifactPeopleFields(out.Recording.Data)
+		}
+		if out.Transcript != nil {
+			trimPastMeetingArtifactPeopleFields(out.Transcript.Data)
+		}
 	}
 
 	prettyJSON, err := json.MarshalIndent(out, "", "  ")

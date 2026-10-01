@@ -5,6 +5,7 @@ package tools
 
 import (
 	"context"
+	"net/http"
 	"strings"
 	"testing"
 )
@@ -90,4 +91,118 @@ func TestCountLFXResources_FullViewSkipsTheGate(t *testing.T) {
 	if len(api.RequestsTo(accessCheckPath)) != 0 || len(api.RequestsTo(countPath)) != 1 {
 		t.Error("full view makes the count call and nothing else")
 	}
+}
+
+func TestCountLFXResources_RegistrantGate(t *testing.T) {
+	const typ = meetingRegistrantResourceType
+	t.Run("forms", func(t *testing.T) {
+		api := setupCountTest(t)
+		api.GrantRelations("v1_meeting:M1#organizer")
+		runCountGateCases(t, api, []countArgsCase{
+			{"organized meeting", CountLFXResourcesArgs{Type: typ, Parent: "meeting:M1"}, true},
+			{"no parent", CountLFXResourcesArgs{Type: typ}, false},
+			{"committee parent", CountLFXResourcesArgs{Type: typ, Parent: "committee:C1"}, false},
+			{"with a tag", CountLFXResourcesArgs{Type: typ, Parent: "meeting:M1", Tags: []string{"host:true"}}, false},
+			{"with name", CountLFXResourcesArgs{Type: typ, Parent: "meeting:M1", Name: "Pat"}, false},
+			{"with filters_all", CountLFXResourcesArgs{Type: typ, Parent: "meeting:M1", FiltersAll: []string{"email:x@example.test"}}, false},
+		})
+	})
+	t.Run("registrant of the meeting", func(t *testing.T) {
+		api := setupCountTest(t)
+		api.GrantRelations()
+		api.Respond(resourcesPath, page([]string{`{"type":"v1_meeting_registrant","id":"r","data":{"uid":"r","meeting_id":"M1","email":"` + stubCallerEmail + `"}}`}, ""))
+		runCountGateCases(t, api, []countArgsCase{
+			{"registered meeting", CountLFXResourcesArgs{Type: typ, Parent: "meeting:M1"}, true},
+		})
+	})
+	t.Run("neither", func(t *testing.T) {
+		api := setupCountTest(t)
+		api.GrantRelations()
+		api.Respond(resourcesPath, page(nil, ""))
+		runCountGateCases(t, api, []countArgsCase{
+			{"hidden meeting", CountLFXResourcesArgs{Type: typ, Parent: "meeting:M1"}, false},
+		})
+	})
+	t.Run("predicate failure fails closed", func(t *testing.T) {
+		api := setupCountTest(t)
+		api.FailAccessCheck(http.StatusServiceUnavailable)
+		api.Respond(countPath, `{"count": 1, "has_more": false}`)
+		res, _, _ := handleCountLFXResources(context.Background(), stubCallToolRequest(), CountLFXResourcesArgs{Type: typ, Parent: "meeting:M1"})
+		if !res.IsError || allResultText(t, res) != peopleVisibilityUnavailableMessage+"\n" || len(api.RequestsTo(countPath)) != 0 {
+			t.Fatalf("expected the unavailable error and no count, got %s", allResultText(t, res))
+		}
+	})
+}
+
+func TestCountLFXResources_ParticipantGate(t *testing.T) {
+	const typ = pastMeetingParticipantResourceType
+	const id = "91461158520-1771596000000"
+	t.Run("organizer forms", func(t *testing.T) {
+		api := setupCountTest(t)
+		api.GrantRelations("v1_past_meeting:" + id + "#organizer")
+		for range 3 {
+			api.Respond(resourcesPath, page([]string{pastMeetingDoc(id)}, "")) // the past-meeting record lookup
+		}
+		runCountGateCases(t, api, []countArgsCase{
+			{"parent alone", CountLFXResourcesArgs{Type: typ, Parent: "past_meeting:" + id}, true},
+			{"attended tag", CountLFXResourcesArgs{Type: typ, Parent: "past_meeting:" + id, Tags: []string{"is_attended:true"}}, true},
+			{"attended tags_all", CountLFXResourcesArgs{Type: typ, Parent: "past_meeting:" + id, TagsAll: []string{"is_attended:true"}}, true},
+			{"no parent", CountLFXResourcesArgs{Type: typ}, false},
+			{"project parent", CountLFXResourcesArgs{Type: typ, Parent: "project:P1"}, false},
+			{"email tag", CountLFXResourcesArgs{Type: typ, Parent: "past_meeting:" + id, Tags: []string{"email:x@example.test"}}, false},
+			{"name", CountLFXResourcesArgs{Type: typ, Parent: "past_meeting:" + id, Name: "Pat"}, false},
+			{"filters_or", CountLFXResourcesArgs{Type: typ, Parent: "past_meeting:" + id, FiltersOr: []string{"org_name:Example"}}, false},
+			{"date range", CountLFXResourcesArgs{Type: typ, Parent: "past_meeting:" + id, DateField: "created_at", DateTo: "2026-12-31"}, false},
+		})
+	})
+	t.Run("public meeting is full access", func(t *testing.T) {
+		api := setupCountTest(t)
+		api.GrantRelations()
+		api.Respond(resourcesPath, page([]string{pastMeetingDocWith(id, "public", false)}, ""))
+		runCountGateCases(t, api, []countArgsCase{
+			{"public", CountLFXResourcesArgs{Type: typ, Parent: "past_meeting:" + id}, true},
+		})
+	})
+	t.Run("restricted public meeting without a relation is refused", func(t *testing.T) {
+		api := setupCountTest(t)
+		api.GrantRelations()
+		api.Respond(resourcesPath, page([]string{pastMeetingDocWith(id, "public", true)}, ""))
+		runCountGateCases(t, api, []countArgsCase{
+			{"restricted", CountLFXResourcesArgs{Type: typ, Parent: "past_meeting:" + id}, false},
+		})
+	})
+	t.Run("record not readable is refused", func(t *testing.T) {
+		api := setupCountTest(t)
+		api.GrantRelations()
+		api.Respond(resourcesPath, page(nil, ""))
+		runCountGateCases(t, api, []countArgsCase{
+			{"unknown meeting", CountLFXResourcesArgs{Type: typ, Parent: "past_meeting:" + id}, false},
+		})
+	})
+}
+
+// pastMeetingDocWith is pastMeetingDoc with explicit visibility, restricted
+// and committees values, the fields the participant rule reads.
+func pastMeetingDocWith(occurrenceID, visibility string, restricted bool, committees ...string) string {
+	cs := make([]string, 0, len(committees))
+	for _, c := range committees {
+		cs = append(cs, `{"uid": "`+c+`"}`)
+	}
+	return `{
+	  "type": "v1_past_meeting",
+	  "id": "` + occurrenceID + `",
+	  "data": {
+	    "meeting_id": "91461158520",
+	    "meeting_and_occurrence_id": "` + occurrenceID + `",
+	    "project_uid": "a0941000002wBz4AAE",
+	    "title": "CNCF TOC",
+	    "visibility": "` + visibility + `",
+	    "restricted": ` + map[bool]string{true: "true", false: "false"}[restricted] + `,
+	    "committees": [` + strings.Join(cs, ",") + `],
+	    "start_time": "2026-06-10T15:00:00Z",
+	    "created_by": {"user_id": "u1", "username": "creator", "email": "creator@example.test", "name": "Creator", "profile_picture": "p"},
+	    "updated_by": {"user_id": "u2", "username": "editor", "email": "editor@example.test", "name": "Editor"},
+	    "updated_by_list": [{"email": "editor@example.test", "name": "Editor"}]
+	  }
+	}`
 }

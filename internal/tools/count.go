@@ -183,7 +183,12 @@ func handleCountLFXResources(ctx context.Context, req *mcp.CallToolRequest, args
 	// can single out a person is refused, and a per-meeting count needs the
 	// view that shows that meeting's count on screen.
 	if !HasFullView(ctx) {
-		if refusal := peopleCountGate(args); refusal != "" {
+		refusal, err := peopleCountGate(ctx, clients, tokenInfo, args)
+		if err != nil {
+			logger.ErrorContext(ctx, "people count visibility check failed", "error", err, "type", args.Type)
+			return errorResult(peopleVisibilityUnavailableMessage), nil, nil
+		}
+		if refusal != "" {
 			return errorResult(refusal), nil, nil
 		}
 	}
