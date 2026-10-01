@@ -23,6 +23,7 @@ func TestParticipantsGroupMode_SchemaAndDescription(t *testing.T) {
 	wantDescription := strings.NewReplacer(
 		"committee UID", "group UID (also known as committee UID)",
 		"project or committee", "project or group",
+		"whose committee you belong to", "whose group you belong to",
 	).Replace(committee.Description)
 	if group.Description != wantDescription {
 		t.Errorf("group description must change only the sibling-style terminology: %q", group.Description)
