@@ -110,7 +110,7 @@ func RegisterGetMailingListMember(server *mcp.Server) {
 func RegisterSearchMailingListMembers(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "search_mailing_list_members",
-		Description: "Search for LFX mailing list members. Optionally filter by Groups.io mailing list ID, project UID, and/or name. You get members only of mailing lists you manage or audit: set mailing_list_id, or project_uid for all such lists in a project. Filters combine with AND: a record must match every filter given.",
+		Description: "Search for LFX mailing list members. Optionally filter by Groups.io mailing list ID, project UID, and/or name. Without LFX-wide access, you get members only of mailing lists you manage or audit: set mailing_list_id, or project_uid for all such lists in a project. Filters combine with AND: a record must match every filter given.",
 		Annotations: &mcp.ToolAnnotations{
 			Title:        "Search Mailing List Members",
 			ReadOnlyHint: true,

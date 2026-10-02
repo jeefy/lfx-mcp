@@ -374,7 +374,7 @@ func TestCountLFXResources_MailingListMembersFollowTheRule(t *testing.T) {
 }
 
 func TestSearchMailingListMembersDescribesTheRule(t *testing.T) {
-	const want = "You get members only of mailing lists you manage or audit: set mailing_list_id, or project_uid for all such lists in a project."
+	const want = "Without LFX-wide access, you get members only of mailing lists you manage or audit: set mailing_list_id, or project_uid for all such lists in a project."
 	tool := listRegisteredTool(t, "search_mailing_list_members", RegisterSearchMailingListMembers)
 	if !strings.Contains(tool.Description, want) {
 		t.Errorf("description missing %q", want)
