@@ -2,50 +2,52 @@
 
 ## What it is
 
-The LFX MCP Server lets an AI assistant you already use (Claude, Cursor, Goose, GitHub Copilot and others)
-interact with LFX Self Serve functionality on your behalf, with your own LFX login: projects, groups, meetings,
-membership, and the actions your role allows.
+The LFX MCP Server lets an AI assistant you already use (Claude, Cursor, Goose, OpenCode, Zed, ChatGPT and others)
+interact with LFX Self Serve functionality on your behalf, with your own LFX login: projects, committees, meetings,
+membership, and the actions your role allows. See the [README](../README.md#connecting-to-the-lfx-mcp-server) for
+the current list of supported clients; if yours is not listed, say so on the access request below and we will
+follow up.
 
 ## Who can request access
 
-Access is for people who take part in a Linux Foundation project or foundation that uses LFX Self Serve, whether
-as a member or manager of a group (a committee, working group, TSC or board), a meeting host or guest, a project
-or foundation administrator, or an organization admin. Through the MCP you see and do what LFX Self Serve lets
-you see and do, with the few differences listed below.
+This form is for project leadership: staff, board members, technical leads, or others in the community with
+established operational responsibilities. It is also for organization leadership: a key contact (one of the named
+contacts on a project's membership agreement) or an OSPO administrator, requesting access to their organization's
+own data.
 
 ## What you can see and do
 
-You sign in to the MCP with your LFX account, the same one you use for LFX Self Serve, and you have the same
-access. The MCP works as you, with the same permission checks as LFX Self Serve, so it can only see and change
-what your LFX account is allowed to. Approving your request only lets you sign in; it does not give you access to
-any project. Your access comes from your place in LFX, linked to your LFX account: your roles in projects, groups
-and organizations, the meetings you are invited to or attend, and the mailing lists you subscribe to. These are
-managed in LFX Self Serve, as they are today.
+If your request is approved, Linux Foundation staff will grant you the appropriate permission within the LFX
+Platform itself, as well as add you to the allowlist of community users allowed to interact with the LFX Platform
+via our MCP server. The LFX MCP Server works like the GitHub MCP server: it lets your AI agent connect using the
+level of access you already have, rather than granting anything new on its own. Pick the access level (read,
+write, or revoke) and scope (entire project, one committee, or organization) closest to what you need.
 
-**You can:**
+Seeing data from other projects and organizations besides your own is expected and is not a bug: anyone signed in
+sees public records across all of LFX, the same information published at
+[the LFX Project Landscape](https://landscape.linuxfoundation.org/?group=projects) and elsewhere — public project
+calendars, meeting recordings set to public by their organizers, and the public-record names of a project's staff and
+governance bodies. If you believe you are seeing something that was marked public by mistake, report it through
+the [LF Help Center chatbot](https://helpcenter.linuxfoundation.org/en/articles/9798558-introducing-the-lf-service-desk-chatbot)
+rather than treating it as an MCP access problem.
 
-- find projects, and the groups, meetings and mailing lists you take part in or have a role on;
-- look up group members, meeting registrants and attendees, as LFX Self Serve shows them to you;
-- get past meeting summaries, and links to recordings and transcripts, when the meeting shares them with you, or
-  you organize the meeting or have a manager or viewer role on its group or project;
-- get counts and overviews across the projects, groups and meetings you can see;
-- see what other projects, groups and meetings have made public, including those in other foundations, as anyone
-  signed in to LFX Self Serve can;
-- if you administer a group, manage the group and its members; if you manage a project, also create groups in it
-  and manage any of its groups;
-- if you manage a project, send emails from its templates and give people roles on its Discord server, where the
-  project has these set up (these two are MCP features that LFX Self Serve does not have);
-- if you have a role at an organization or are one of its key contacts, see its memberships, key contacts and
-  group seats; if you have a manager or viewer role on a project, see the memberships and key contacts for it.
+**You can, based on your access level:**
+
+- find projects, and the committees, meetings and mailing lists you take part in or have a role on;
+- look up committee members, meeting registrants and attendees, under the same access rules as LFX Self Serve;
+- get past meeting summaries, and links to recordings and transcripts shared with you;
+- get counts and overviews across the projects, committees and meetings you can see;
+- see what other projects, committees and meetings have made public, including those in other foundations, as
+  anyone signed in to LFX Self Serve can;
+- manage a committee and its members, or create and manage committees across a project;
+- send emails from a project's templates and give people roles on its Discord server, where the project has
+  these set up (these two are MCP features that LFX Self Serve does not have);
+- see an organization's memberships, key contacts and committee seats.
 
 **You cannot:**
 
-- see private groups, meetings or mailing lists unless you take part in them or have a manager or viewer role on
-  the project or group they belong to;
-- see a meeting's recording, transcript or summary unless the meeting's settings share it with you, or you
-  organize the meeting or have a manager or viewer role on its group or project;
-- see an organization's memberships, key contacts or group seats unless you have a role at that organization, are
-  one of its key contacts, or have a manager or viewer role on the project the membership is for;
+- see a private committee, meeting, mailing list, or organization's membership data unless you take part in it,
+  or have been granted explicit access to the project or committee it belongs to;
 - see a mailing list's members unless you manage or audit that mailing list; this follows the platform's intended
   rule and is stricter than what LFX Self Serve shows today;
 - access LFX Insights or other Linux Foundation analytics and reporting data;
@@ -58,8 +60,12 @@ are not available to non-staff community accounts.
 
 Open a new issue in this repository with the
 [LFX MCP access request](https://github.com/linuxfoundation/lfx-mcp/issues/new?template=access_request.yml)
-form. It asks whether to grant or remove access, the LFID username, and what you plan to do with the assistant;
-the rest is optional.
+form. It asks what you're requesting (read, write, or a removal), the scope and location it applies to, the LFID
+username, and what you plan to do with the assistant; the rest is optional.
+
+**This repository, and the issue you file, are public.** Do not include passwords, tokens, or any private or
+confidential project, meeting or member information in the request — a public name, your LFID, and a general
+description of your intended use are all that is needed.
 
 ## What happens next
 
@@ -97,9 +103,3 @@ your issue.
 
 Comment on your issue. For account problems, use
 [support.linuxfoundation.org](https://support.linuxfoundation.org). Please do not post access requests in Slack.
-
-## Appendix: sponsoring and removing access
-
-For chairs, administrators and executive directors. We may ask someone in the requester's group to confirm their
-participation; do that by commenting on the issue, or open the form on the person's behalf. To remove someone's
-access, open the form and choose **Remove access**.
