@@ -414,7 +414,10 @@ member organizations across the LF today", and the offer of memberships
   FLOOR: the account is resolved from the proposal's company field and a
   large share resolves to none, so say "at least N speakers attributed to
   Red Hat". Several editions in the window are several rows; do not add
-  them up for a distinct headcount — widen to by=total for that. There is
+  them up, and do not switch to by=total for a distinct headcount: it
+  counts the company's speakers at every event in the window, not only
+  KubeCon. This surface gives one row per edition, never a distinct
+  headcount across editions. There is
   no event filter: by=event and a window is how one event is isolated.
 - A rejection: memberships, start_date=2020-01-01 → "start_date needs period
   for an at-date metric; the state on a single day is end_date alone" — add
