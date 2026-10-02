@@ -139,10 +139,10 @@ var nonPeopleTools = []string{
 	"query_lfx_lens", "explore_lfx_semantic_layer", "query_lfx_semantic_layer",
 	"query_lfx_standard_metrics", "read_lfx_semantic_layer_guidance", "read_lfx_standard_metrics_guidance",
 	// Out of the rule's scope until the product decides what LFX Self Serve
-	// shows for them (README "People data"): mailing-list members, member
-	// records, membership key contacts, org committee seats, and project
-	// settings (writers, auditors, meeting_coordinators).
-	"search_mailing_list_members", "get_mailing_list_member", "search_members", "get_member_membership",
+	// shows for them (README "People data"): member records, membership key
+	// contacts, org committee seats, and project settings (writers,
+	// auditors, meeting_coordinators).
+	"search_members", "get_member_membership",
 	"get_membership_key_contacts", "get_membership_key_contact", "get_org_committee_seats", "get_project",
 }
 

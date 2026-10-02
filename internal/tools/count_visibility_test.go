@@ -41,10 +41,15 @@ func runCountGateCases(t *testing.T, api *stubLFXAPI, cases []countArgsCase) {
 				t.Fatalf("expected a refusal before any count, got isError=%v counts=%d: %s", res.IsError, counted, text)
 			}
 			// A people type's refusal names the form LFX Self Serve shows;
-			// a meeting type's names the meeting's own fields.
+			// a meeting type's names the meeting's own fields; a mailing
+			// list member's names the lists the caller manages or audits,
+			// a rule stricter than Self Serve's screen.
 			form := "LFX Self Serve"
-			if tc.args.Type == meetingResourceType || tc.args.Type == pastMeetingResourceType {
+			switch tc.args.Type {
+			case meetingResourceType, pastMeetingResourceType:
 				form = "the meeting's own fields"
+			case mailingListMemberResourceType:
+				form = "a mailing list you manage or audit"
 			}
 			if !strings.Contains(text, tc.args.Type) || !strings.Contains(text, form) {
 				t.Errorf("refusal must name the type and the allowed form: %s", text)
@@ -82,7 +87,10 @@ func TestCountLFXResources_NonPeopleTypesAreUngated(t *testing.T) {
 		{"committee with name", CountLFXResourcesArgs{Type: committeeResourceType, Name: "TOC"}, true},
 		{"meeting with filters", CountLFXResourcesArgs{Type: meetingResourceType, FiltersAll: []string{"visibility:public"}}, true},
 		{"project with tags", CountLFXResourcesArgs{Type: projectResourceType, Tags: []string{"slug:cncf"}}, true},
-		{"mailing list member with name", CountLFXResourcesArgs{Type: mailingListMemberResourceType, Name: "pat"}, true},
+		// Mailing lists, and their subscriber counts, stay ungated; their
+		// members do not (TestCountLFXResources_MailingListMembersFollowTheRule).
+		{"mailing list with name", CountLFXResourcesArgs{Type: mailingListResourceType, Name: "dev"}, true},
+		{"mailing list member with name", CountLFXResourcesArgs{Type: mailingListMemberResourceType, Name: "pat"}, false},
 	})
 }
 

@@ -420,6 +420,11 @@ func dataStrings(resources []*querysvc.Resource, key string) []string {
 //     a committee: or project: parent and committee_uid:, project_uid:,
 //     committee_category: or voting_status: tags; nothing that names a
 //     person (name, filters_or, filters_all, other tags) and no date range.
+//   - groupsio_member: a mailing list's members are shown only to its
+//     managers and auditors (people_visibility_mailing_lists.go). Allowed
+//     only with parent=groupsio_mailing_list:<uid> naming a list the caller
+//     manages or audits; the parent bounds every other filter to that list,
+//     whose members the caller is shown in full.
 //   - v1_meeting_registrant: the count is shown to a meeting's organizers
 //     and registrants. Allowed only as parent=meeting:<id> with no other
 //     filter, when the caller has one of those two views.
@@ -443,6 +448,19 @@ func peopleCountGate(ctx context.Context, clients *lfxv2.Clients, tokenInfo *aut
 		if hasPersonFilter || hasDateRange || !parentOK ||
 			!tagsHaveOnlyPrefixes(args.Tags, tagPrefixes...) || !tagsHaveOnlyPrefixes(args.TagsAll, tagPrefixes...) {
 			return countRefusal(args.Type, allowed), nil
+		}
+		return "", nil
+	case mailingListMemberResourceType:
+		uid, ok := strings.CutPrefix(args.Parent, mailingListResourceType+":")
+		if !ok || uid == "" {
+			return mailingListMemberCountRefusal, nil
+		}
+		shown, err := mailingListMemberListShown(ctx, clients, []string{uid})
+		if err != nil {
+			return "", err
+		}
+		if !shown[uid] {
+			return mailingListMemberCountRefusal, nil
 		}
 		return "", nil
 	case meetingRegistrantResourceType:
@@ -529,6 +547,17 @@ var PeopleToolNames = []string{
 	"search_past_meeting_participants", "get_past_meeting_participant",
 	"search_past_meetings", "get_past_meeting",
 	"search_past_meeting_summaries", "get_past_meeting_summary",
+	"search_mailing_list_members", "get_mailing_list_member",
+}
+
+// peopleCountUnavailableMessage is the fail-closed tool error of a people
+// count whose gate could not decide: the mailing-list member rule has its
+// own wording (mailingListVisibilityUnavailableMessage).
+func peopleCountUnavailableMessage(resourceType string) string {
+	if resourceType == mailingListMemberResourceType {
+		return mailingListVisibilityUnavailableMessage
+	}
+	return peopleVisibilityUnavailableMessage
 }
 
 // countRefusal is the tool error refusing a count of a people type for a
