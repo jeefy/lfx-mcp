@@ -10,6 +10,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // Mailing lists of one project, as the caller's relations to them make them:
@@ -29,6 +31,32 @@ func mailingListDoc(uid string) string {
 // mailingListMemberDoc is a groupsio_member query record of list listUID.
 func mailingListMemberDoc(uid, listUID, email string) string {
 	return fmt.Sprintf(`{"type": "groupsio_member", "id": "groupsio_member:%s", "data": {"uid": %q, "mailing_list_uid": %q, "group_id": %s, "username": "user-%s", "first_name": "Sam", "last_name": "Subscriber", "email": %q, "project_uid": "P1"}}`, uid, uid, listUID, listUID, uid, email)
+}
+
+// mailingListMemberDocAs is a groupsio_member query record of list listUID
+// with the given username and e-mail.
+func mailingListMemberDocAs(uid, listUID, username, email string) string {
+	return fmt.Sprintf(`{"type": "groupsio_member", "id": "groupsio_member:%s", "data": {"uid": %q, "mailing_list_uid": %q, "group_id": %s, "username": %q, "first_name": "Sam", "last_name": "Subscriber", "email": %q, "project_uid": "P1"}}`, uid, uid, listUID, listUID, username, email)
+}
+
+// ownMailingListFilters is the identity part of the filters_or clause for
+// stubCallToolRequest's caller: username, then the e-mail claim as given and
+// lowercased.
+var ownMailingListFilters = []string{"username:" + stubCallerUsername, "email:" + stubCallerEmail, "email:" + strings.ToLower(stubCallerEmail)}
+
+// mailingListRequestAs is stubCallToolRequest with the caller's username and
+// e-mail claims replaced; an empty value removes the claim.
+func mailingListRequestAs(username, email string) *mcp.CallToolRequest {
+	req := stubCallToolRequest()
+	delete(req.Extra.TokenInfo.Extra, "username")
+	delete(req.Extra.TokenInfo.Extra, ClaimEmail)
+	if username != "" {
+		req.Extra.TokenInfo.Extra["username"] = username
+	}
+	if email != "" {
+		req.Extra.TokenInfo.Extra[ClaimEmail] = email
+	}
+	return req
 }
 
 // listRelation is the relation request the rule asks for one list.
@@ -85,34 +113,121 @@ func TestSearchMailingListMembers_ManagersAndAuditorsGetTheList(t *testing.T) {
 	}
 }
 
-func TestSearchMailingListMembers_SubscriberIsRefusedBeforeTheQuery(t *testing.T) {
-	api := setupMailingListTest(t)
-	// A subscriber is a member, and so a viewer, of the list: neither shows
-	// its member list.
-	api.GrantRelations(listRelation(mlSubscriberUID, "member"), listRelation(mlSubscriberUID, "viewer"))
-	api.Respond(resourcesPath, page([]string{mailingListMemberDoc("gm-1", mlSubscriberUID, "subscriber@example.test")}, ""))
+func TestSearchMailingListMembers_UnmanagedListReadsOnlyOwnRecords(t *testing.T) {
+	// The stub ignores filters_or, so each page carries a stranger's record
+	// next to the caller's: the narrowed query is what keeps the stranger's
+	// record from being read, and the second check drops it from the page.
+	for _, tc := range []struct {
+		name string
+		doc  string
+	}{
+		{"own by e-mail", mailingListMemberDocAs("gm-1", mlSubscriberUID, "someone-else", "stub.user@example.test")},
+		{"own by e-mail in another casing", mailingListMemberDocAs("gm-1", mlSubscriberUID, "", "STUB.USER@EXAMPLE.TEST")},
+		{"own by username", mailingListMemberDocAs("gm-1", mlSubscriberUID, stubCallerUsername, "other-address@example.test")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			api := setupMailingListTest(t)
+			// A subscriber is a member, and so a viewer, of the list:
+			// neither shows its member list.
+			api.GrantRelations(listRelation(mlSubscriberUID, "member"), listRelation(mlSubscriberUID, "viewer"))
+			api.Respond(resourcesPath, page([]string{tc.doc, mailingListMemberDoc("gm-2", mlSubscriberUID, "stranger@example.test")}, ""))
 
-	_, out, err := handleSearchMailingListMembers(context.Background(), stubCallToolRequest(), SearchMailingListMembersArgs{MailingListID: mlSubscriberUID})
-	if err == nil || err.Error() != mailingListMembersRefusal {
-		t.Fatalf("expected the refusal, got %v", err)
-	}
-	if len(out.Resources) != 0 || len(mailingListMemberQueries(api)) != 0 {
-		t.Errorf("a refused search must not query members, got %d queries", len(mailingListMemberQueries(api)))
+			_, out, err := handleSearchMailingListMembers(context.Background(), stubCallToolRequest(), SearchMailingListMembersArgs{MailingListID: mlSubscriberUID, Name: "Sam"})
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			q := mailingListMemberQueries(api)
+			if len(q) != 1 {
+				t.Fatalf("expected one member query, got %d", len(q))
+			}
+			if got := q[0].Query["filters_or"]; !slices.Equal(got, ownMailingListFilters) {
+				t.Errorf("the query must be narrowed to the caller's identity, got filters_or %q", got)
+			}
+			if got := strings.Join(q[0].Query["tags_all"], ","); got != "mailing_list_uid:"+mlSubscriberUID {
+				t.Errorf("the list tag stays, got %q", got)
+			}
+			if q[0].Query.Get("name") != "Sam" {
+				t.Errorf("name runs within the caller's own records, got %q", q[0].Query.Get("name"))
+			}
+			if len(out.Resources) != 1 || out.Resources[0].ID != "groupsio_member:gm-1" {
+				t.Fatalf("expected only the caller's own record, got %+v", out.Resources)
+			}
+			if all := everything(t, nil, out, nil); strings.Contains(all, "stranger@example.test") {
+				t.Errorf("another member's record must not be returned:\n%s", all)
+			}
+		})
 	}
 }
 
-func TestSearchMailingListMembers_RefusesUnscopedSearches(t *testing.T) {
-	for _, args := range []SearchMailingListMembersArgs{{}, {Name: "subscriber@example.test"}} {
-		api := setupMailingListTest(t)
-		api.GrantRelations()
-		api.Respond(resourcesPath, page([]string{mailingListMemberDoc("gm-1", mlWriterUID, "subscriber@example.test")}, ""))
-		_, _, err := handleSearchMailingListMembers(context.Background(), stubCallToolRequest(), args)
-		if err == nil || err.Error() != mailingListMembersRefusal {
-			t.Fatalf("%+v: expected the refusal, got %v", args, err)
-		}
-		if n := len(api.Requests()); n != 0 {
-			t.Errorf("%+v: an unscoped search must make no upstream call, got %d", args, n)
-		}
+func TestSearchMailingListMembers_UnscopedReadsOwnSubscriptions(t *testing.T) {
+	api := setupMailingListTest(t)
+	api.Respond(resourcesPath, page([]string{
+		mailingListMemberDocAs("gm-1", mlSubscriberUID, stubCallerUsername, "stub.user@example.test"),
+		mailingListMemberDocAs("gm-2", mlWriterUID, "", stubCallerEmail),
+		mailingListMemberDoc("gm-3", mlAuditorUID, "stranger@example.test"),
+	}, ""))
+
+	_, out, err := handleSearchMailingListMembers(context.Background(), stubCallToolRequest(), SearchMailingListMembersArgs{Name: "Sam"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if n := len(api.RequestsTo(accessCheckPath)); n != 0 {
+		t.Errorf("an unscoped search names no list to check, got %d access-checks", n)
+	}
+	q := mailingListMemberQueries(api)
+	if len(q) != 1 {
+		t.Fatalf("expected one member query, got %d", len(q))
+	}
+	if got := q[0].Query["filters_or"]; !slices.Equal(got, ownMailingListFilters) {
+		t.Errorf("the query must be narrowed to the caller's identity, got filters_or %q", got)
+	}
+	if _, ok := q[0].Query["tags_all"]; ok || q[0].Query.Get("name") != "Sam" {
+		t.Errorf("expected no scope tag and the name filter, got %+v", q[0].Query)
+	}
+	var ids []string
+	for _, r := range out.Resources {
+		ids = append(ids, r.ID)
+	}
+	if strings.Join(ids, ",") != "groupsio_member:gm-1,groupsio_member:gm-2" {
+		t.Errorf("expected the caller's own subscriptions only, got %v", ids)
+	}
+}
+
+func TestSearchMailingListMembers_NoIdentityReadsNothingElse(t *testing.T) {
+	// A caller with neither username nor e-mail can be shown no record of a
+	// list they do not manage or audit: the query is not sent, and the
+	// result is the ordinary empty page.
+	for _, tc := range []struct {
+		name   string
+		args   SearchMailingListMembersArgs
+		grants []string
+		lists  []string
+	}{
+		{"unmanaged list", SearchMailingListMembersArgs{MailingListID: mlSubscriberUID}, []string{listRelation(mlSubscriberUID, "member")}, nil},
+		{"no scope", SearchMailingListMembersArgs{Name: "Sam"}, nil, nil},
+		{"project with no shown list", SearchMailingListMembersArgs{ProjectUID: "P1"}, []string{listRelation(mlSubscriberUID, "member")}, []string{mailingListDoc(mlSubscriberUID)}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			api := setupMailingListTest(t)
+			api.GrantRelations(tc.grants...)
+			if tc.args.ProjectUID != "" {
+				api.Respond(resourcesPath, page(tc.lists, ""))
+			}
+			api.Respond(resourcesPath, page([]string{mailingListMemberDoc("gm-1", mlSubscriberUID, "stranger@example.test")}, ""))
+			res, out, err := handleSearchMailingListMembers(context.Background(), mailingListRequestAs("", ""), tc.args)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if n := len(mailingListMemberQueries(api)); n != 0 {
+				t.Errorf("no member query may be sent, got %d", n)
+			}
+			if len(out.Resources) != 0 || len(out.Warnings) == 0 {
+				t.Errorf("expected an empty page with the search warning, got %+v", out)
+			}
+			if all := everything(t, res, out, nil); strings.Contains(all, "stranger@example.test") {
+				t.Errorf("nothing may be returned:\n%s", all)
+			}
+		})
 	}
 }
 
@@ -145,12 +260,14 @@ func TestSearchMailingListMembers_ProjectIsNarrowedToShownLists(t *testing.T) {
 	api.GrantRelations(listRelation(mlWriterUID, "writer"), listRelation(mlAuditorUID, "auditor"), listRelation(mlSubscriberUID, "member"))
 	api.Respond(resourcesPath, page([]string{mailingListDoc(mlWriterUID), mailingListDoc(mlAuditorUID)}, "more"))
 	api.Respond(resourcesPath, page([]string{mailingListDoc(mlSubscriberUID)}, ""))
-	// The page carries a record of the subscriber's list, which the
-	// narrowing would not return: the second check drops it.
+	// The page carries a stranger's record of the subscriber's list, which
+	// the narrowing would not return: the second check drops it. The
+	// caller's own record on that list stays.
 	api.Respond(resourcesPath, page([]string{
 		mailingListMemberDoc("gm-1", mlWriterUID, "one@example.test"),
 		mailingListMemberDoc("gm-2", mlAuditorUID, "two@example.test"),
 		mailingListMemberDoc("gm-3", mlSubscriberUID, "three@example.test"),
+		mailingListMemberDocAs("gm-4", mlSubscriberUID, stubCallerUsername, "stub.user@example.test"),
 	}, ""))
 
 	_, out, err := handleSearchMailingListMembers(context.Background(), stubCallToolRequest(), SearchMailingListMembersArgs{ProjectUID: "P1"})
@@ -165,8 +282,8 @@ func TestSearchMailingListMembers_ProjectIsNarrowedToShownLists(t *testing.T) {
 	if len(q) != 1 {
 		t.Fatalf("expected one member query, got %d", len(q))
 	}
-	if got := strings.Join(q[0].Query["filters_or"], ","); got != "mailing_list_uid:"+mlWriterUID+",mailing_list_uid:"+mlAuditorUID {
-		t.Errorf("the query must be narrowed to the shown lists, got filters_or %q", got)
+	if got, want := q[0].Query["filters_or"], append([]string{"mailing_list_uid:" + mlWriterUID, "mailing_list_uid:" + mlAuditorUID}, ownMailingListFilters...); !slices.Equal(got, want) {
+		t.Errorf("the query must be narrowed to the shown lists and the caller, got filters_or %q", got)
 	}
 	if got := strings.Join(q[0].Query["tags_all"], ","); got != "project_uid:P1" {
 		t.Errorf("the project tag stays, got %q", got)
@@ -175,11 +292,11 @@ func TestSearchMailingListMembers_ProjectIsNarrowedToShownLists(t *testing.T) {
 	for _, r := range out.Resources {
 		emails = append(emails, dataString(r.Data, "email"))
 	}
-	if strings.Join(emails, ",") != "one@example.test,two@example.test" {
-		t.Errorf("expected only the shown lists' members, got %v", emails)
+	if strings.Join(emails, ",") != "one@example.test,two@example.test,stub.user@example.test" {
+		t.Errorf("expected the shown lists' members and the caller's own record, got %v", emails)
 	}
-	if all := everything(t, nil, out, nil); strings.Contains(all, "three@example.test") || strings.Contains(all, mlSubscriberUID) {
-		t.Errorf("the withheld list must be neither returned nor named:\n%s", all)
+	if all := everything(t, nil, out, nil); strings.Contains(all, "three@example.test") {
+		t.Errorf("another member of the withheld list must not be returned:\n%s", all)
 	}
 }
 
@@ -211,33 +328,47 @@ func TestSearchMailingListMembers_ProjectListUIDFromDataOrID(t *testing.T) {
 	if len(q) != 1 {
 		t.Fatalf("expected one member query, got %d", len(q))
 	}
-	if got := strings.Join(q[0].Query["filters_or"], ","); got != "mailing_list_uid:"+idOnlyUID+",mailing_list_uid:"+dataOnlyUID {
-		t.Errorf("expected the query narrowed to both lists, got filters_or %q", got)
+	if got, want := q[0].Query["filters_or"], append([]string{"mailing_list_uid:" + idOnlyUID, "mailing_list_uid:" + dataOnlyUID}, ownMailingListFilters...); !slices.Equal(got, want) {
+		t.Errorf("expected the query narrowed to both lists and the caller, got filters_or %q", got)
 	}
 	if len(out.Resources) != 2 {
 		t.Errorf("expected both members, got %d", len(out.Resources))
 	}
 }
 
+func TestSearchMailingListMembers_ProjectWithNoShownListReadsOwnRecords(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		grants []string
+		lists  []string
+	}{
+		{"no shown list", []string{listRelation(mlSubscriberUID, "member")}, []string{mailingListDoc(mlSubscriberUID)}},
+		{"no visible list", nil, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			api := setupMailingListTest(t)
+			api.GrantRelations(tc.grants...)
+			api.Respond(resourcesPath, page(tc.lists, ""))
+			api.Respond(resourcesPath, page([]string{
+				mailingListMemberDocAs("gm-1", mlSubscriberUID, stubCallerUsername, "stub.user@example.test"),
+				mailingListMemberDoc("gm-2", mlSubscriberUID, "stranger@example.test"),
+			}, ""))
+			_, out, err := handleSearchMailingListMembers(context.Background(), stubCallToolRequest(), SearchMailingListMembersArgs{ProjectUID: "P1", Name: "Sam"})
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			q := mailingListMemberQueries(api)
+			if len(q) != 1 || !slices.Equal(q[0].Query["filters_or"], ownMailingListFilters) || strings.Join(q[0].Query["tags_all"], ",") != "project_uid:P1" {
+				t.Fatalf("expected one query narrowed to the caller within the project, got %+v", q)
+			}
+			if len(out.Resources) != 1 || out.Resources[0].ID != "groupsio_member:gm-1" {
+				t.Errorf("expected only the caller's own record, got %+v", out.Resources)
+			}
+		})
+	}
+}
+
 func TestSearchMailingListMembers_ProjectRefusals(t *testing.T) {
-	t.Run("no shown list", func(t *testing.T) {
-		api := setupMailingListTest(t)
-		api.GrantRelations(listRelation(mlSubscriberUID, "member"))
-		api.Respond(resourcesPath, page([]string{mailingListDoc(mlSubscriberUID)}, ""))
-		_, _, err := handleSearchMailingListMembers(context.Background(), stubCallToolRequest(), SearchMailingListMembersArgs{ProjectUID: "P1", Name: "Sam"})
-		if err == nil || err.Error() != mailingListMembersRefusal || len(mailingListMemberQueries(api)) != 0 {
-			t.Fatalf("expected the refusal and no member query, got %v", err)
-		}
-	})
-	t.Run("no visible list", func(t *testing.T) {
-		api := setupMailingListTest(t)
-		api.GrantRelations()
-		api.Respond(resourcesPath, page(nil, ""))
-		_, _, err := handleSearchMailingListMembers(context.Background(), stubCallToolRequest(), SearchMailingListMembersArgs{ProjectUID: "P1"})
-		if err == nil || err.Error() != mailingListMembersRefusal || len(mailingListMemberQueries(api)) != 0 {
-			t.Fatalf("expected the refusal and no member query, got %v", err)
-		}
-	})
 	t.Run("list lookup beyond its page cap", func(t *testing.T) {
 		api := setupMailingListTest(t)
 		api.GrantRelations()
@@ -267,6 +398,23 @@ func TestSearchMailingListMembers_ProjectRefusals(t *testing.T) {
 			t.Fatalf("expected the filter-cap refusal and no member query, got %v", err)
 		}
 	})
+	t.Run("shown lists and identity beyond one clause", func(t *testing.T) {
+		// The lists alone fit the clause; with the caller's identity
+		// terms they do not.
+		api := setupMailingListTest(t)
+		var docs, grants []string
+		for i := 0; i < peopleFilterChunk-len(ownMailingListFilters)+1; i++ {
+			uid := fmt.Sprint(170000 + i)
+			docs = append(docs, mailingListDoc(uid))
+			grants = append(grants, listRelation(uid, "writer"))
+		}
+		api.GrantRelations(grants...)
+		api.Respond(resourcesPath, page(docs, ""))
+		_, _, err := handleSearchMailingListMembers(context.Background(), stubCallToolRequest(), SearchMailingListMembersArgs{ProjectUID: "P1"})
+		if err == nil || err.Error() != mailingListFilterCapRefusal || len(mailingListMemberQueries(api)) != 0 {
+			t.Fatalf("expected the filter-cap refusal and no member query, got %v", err)
+		}
+	})
 }
 
 func TestGetMailingListMember_ManagersAndAuditorsGetTheRecord(t *testing.T) {
@@ -283,28 +431,69 @@ func TestGetMailingListMember_ManagersAndAuditorsGetTheRecord(t *testing.T) {
 	}
 }
 
-func TestGetMailingListMember_NotShownReadsAsNotFound(t *testing.T) {
-	// The text a caller with full view gets for a member that does not
-	// exist: the service's 404 through friendlyAPIError.
+// missingMailingListMemberText is the text a caller with full view gets for
+// a member that does not exist: the service's 404 through friendlyAPIError.
+func missingMailingListMemberText(t *testing.T) string {
+	t.Helper()
 	api := setupMailingListTest(t)
 	api.RespondStatus(fullViewMailingListMemberPath, http.StatusNotFound, `{"name":"NotFound","message":"member not found"}`)
 	missing, _, _ := handleGetMailingListMember(fullViewCtx(), stubCallToolRequest(), GetMailingListMemberArgs{MailingListID: fullViewMailingListID, MemberID: fullViewMailingListMemberID})
 	if !missing.IsError {
 		t.Fatal("expected an error for the missing member")
 	}
+	return allResultText(t, missing)
+}
 
-	api = setupMailingListTest(t)
-	api.GrantRelations(listRelation(fullViewMailingListID, "member"), listRelation(fullViewMailingListID, "viewer"))
-	api.Respond(fullViewMailingListMemberPath, fullViewMailingListMemberRecord)
-	hidden, _, err := handleGetMailingListMember(context.Background(), stubCallToolRequest(), GetMailingListMemberArgs{MailingListID: fullViewMailingListID, MemberID: fullViewMailingListMemberID})
-	if err != nil || !hidden.IsError {
-		t.Fatalf("expected an error result, got %v %s", err, allResultText(t, hidden))
+func TestGetMailingListMember_OwnRecordOnAnyList(t *testing.T) {
+	// fullViewMailingListMemberRecord is subscriber-1's, at
+	// subscriber@example.test.
+	for _, tc := range []struct {
+		name            string
+		username, email string
+	}{
+		{"by e-mail", "someone-else", "subscriber@example.test"},
+		{"by e-mail in another casing", "", "Subscriber@Example.TEST"},
+		{"by username", "subscriber-1", "other-address@example.test"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			api := setupMailingListTest(t)
+			api.GrantRelations(listRelation(fullViewMailingListID, "member"), listRelation(fullViewMailingListID, "viewer"))
+			api.Respond(fullViewMailingListMemberPath, fullViewMailingListMemberRecord)
+			res, _, err := handleGetMailingListMember(context.Background(), mailingListRequestAs(tc.username, tc.email), GetMailingListMemberArgs{MailingListID: fullViewMailingListID, MemberID: fullViewMailingListMemberID})
+			if err != nil || res.IsError || !strings.Contains(allResultText(t, res), "subscriber@example.test") {
+				t.Fatalf("expected the caller's own record, got %v %s", err, allResultText(t, res))
+			}
+		})
 	}
-	if got, want := allResultText(t, hidden), allResultText(t, missing); got != want {
-		t.Errorf("a member not shown must read as a missing one:\n got %q\nwant %q", got, want)
-	}
-	if n := len(api.RequestsTo(fullViewMailingListMemberPath)); n != 0 {
-		t.Errorf("the record must not be fetched for a caller it is not shown to, got %d fetches", n)
+}
+
+func TestGetMailingListMember_NotShownReadsAsNotFound(t *testing.T) {
+	want := missingMailingListMemberText(t)
+	for _, tc := range []struct {
+		name string
+		req  *mcp.CallToolRequest
+		// fetches is whether the record is fetched to be matched: a
+		// caller with no identity has nothing to match it against.
+		fetches bool
+	}{
+		{"another member's record", stubCallToolRequest(), true},
+		{"caller without identity", mailingListRequestAs("", ""), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			api := setupMailingListTest(t)
+			api.GrantRelations(listRelation(fullViewMailingListID, "member"), listRelation(fullViewMailingListID, "viewer"))
+			api.Respond(fullViewMailingListMemberPath, fullViewMailingListMemberRecord)
+			hidden, _, err := handleGetMailingListMember(context.Background(), tc.req, GetMailingListMemberArgs{MailingListID: fullViewMailingListID, MemberID: fullViewMailingListMemberID})
+			if err != nil || !hidden.IsError {
+				t.Fatalf("expected an error result, got %v %s", err, allResultText(t, hidden))
+			}
+			if got := allResultText(t, hidden); got != want {
+				t.Errorf("a member not shown must read as a missing one:\n got %q\nwant %q", got, want)
+			}
+			if n := len(api.RequestsTo(fullViewMailingListMemberPath)); (n != 0) != tc.fetches {
+				t.Errorf("record fetches: %d, want fetched=%v", n, tc.fetches)
+			}
+		})
 	}
 }
 
@@ -374,7 +563,7 @@ func TestCountLFXResources_MailingListMembersFollowTheRule(t *testing.T) {
 }
 
 func TestSearchMailingListMembersDescribesTheRule(t *testing.T) {
-	const want = "Without LFX-wide access, you get members only of mailing lists you manage or audit: set mailing_list_id, or project_uid for all such lists in a project."
+	const want = "Without LFX-wide access, you get the members of mailing lists you manage or audit and your own subscriptions on other lists."
 	tool := listRegisteredTool(t, "search_mailing_list_members", RegisterSearchMailingListMembers)
 	if !strings.Contains(tool.Description, want) {
 		t.Errorf("description missing %q", want)

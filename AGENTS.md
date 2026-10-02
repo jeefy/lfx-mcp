@@ -248,10 +248,12 @@ person. The rules live in `internal/tools/people_visibility.go` (groups),
 `people_visibility_meetings.go` (meetings) and
 `people_visibility_mailing_lists.go` (mailing-list members); the tool
 descriptions state each rule in user terms. Mailing-list members follow the
-platform's intended rule rather than today's screen: they are shown only to
-the list's managers and auditors (`writer` or `auditor` on
+platform's intended rule rather than today's screen: a list's members are
+shown only to the list's managers and auditors (`writer` or `auditor` on
 `groupsio_mailing_list:<uid>`, both checked, since in the access model
-auditor does not include writer). This is deliberately stricter than LFX
+auditor does not include writer), and every caller is shown their own
+subscriptions on any list, matched by username or e-mail as for meeting
+registrants and participants (`isOwnRecord`). This is deliberately stricter than LFX
 Self Serve, which currently shows a public list's members, with e-mails, to
 any signed-in user; the MCP server applies the intended rule ahead of the
 platform fix. Member records, membership key contacts, org committee seats
@@ -313,15 +315,24 @@ that.
   group the narrowing did not cover (a member record whose project tag is
   stale). Mailing-list member searches take the same shape: the list named,
   or every list of the project visible to the caller
-  (`projectMailingListUIDs`, paged and capped), is checked first, and a
-  project search is narrowed with `filters_or` on `mailing_list_uid` to the
-  lists the caller manages or audits (`mailingListMemberFilters`). A search
-  with neither scope, over a list or project with no such list, over a
-  project with more lists than the lookup reads, or with more such lists
-  than `peopleFilterChunk`, is refused with a tool error naming the allowed
-  form. `get_mailing_list_member` decides before the fetch, and a member of
-  a list the caller does not manage or audit gets the mailing list
-  service's 404 text (`serviceLookupNotVisibleMessage`). The mailing-list
+  (`projectMailingListUIDs`, paged and capped), is checked first. A list
+  named that the caller manages or audits is read whole; any other search
+  is narrowed with one `filters_or` clause (`mailingListMemberFilters`) on
+  `mailing_list_uid` of the lists the caller manages or audits plus the
+  caller's identity terms (`participantNarrowing`: `username`, the e-mail
+  as given and lowercased), which the query service ANDs with the list or
+  project tag and `name`. A list named that the caller does not manage or
+  audit therefore reads only their own records on it, and a search with
+  neither scope reads their own subscriptions across lists; `name` runs
+  within that set, so it cannot probe for anyone else. A caller shown no
+  list and carrying neither username nor e-mail gets an empty page and no
+  query is sent. A project with more lists than the lookup reads, or whose
+  clause would exceed `peopleFilterChunk` terms, is refused with a tool
+  error naming the allowed form. `get_mailing_list_member` decides the list
+  before the fetch: for a list the caller does not manage or audit it
+  fetches the record as the caller and returns it only when it is their
+  own; any other record gets the mailing list service's 404 text
+  (`serviceLookupNotVisibleMessage`), as a missing member does. The mailing-list
   rule's own texts do not say "what LFX Self Serve shows", since the rule
   is stricter than that screen: its count refusal is
   `mailingListMemberCountRefusal` rather than `countRefusal`, and it fails

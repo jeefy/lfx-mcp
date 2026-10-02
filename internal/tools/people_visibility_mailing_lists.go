@@ -6,10 +6,12 @@
 // This file holds the people rule for mailing-list members (see
 // people_visibility.go for the shared principles): a caller without full view
 // is shown the members of a mailing list only when it manages the list
-// (writer) or audits it (auditor) on groupsio_mailing_list:<uid>. That is the
-// platform's intended rule; LFX Self Serve's screen currently shows a public
-// list's members to any signed-in user, so on this point the MCP server
-// follows the intended rule ahead of the platform fix.
+// (writer) or audits it (auditor) on groupsio_mailing_list:<uid>, and its own
+// subscriptions on any list, matched by username or e-mail as meeting
+// registrants and participants are. That is the platform's intended rule; LFX
+// Self Serve's screen currently shows a public list's members to any
+// signed-in user, so on this point the MCP server follows the intended rule
+// ahead of the platform fix.
 package tools
 
 import (
@@ -18,12 +20,8 @@ import (
 
 	"github.com/linuxfoundation/lfx-mcp/internal/lfxv2"
 	querysvc "github.com/linuxfoundation/lfx-v2-query-service/gen/query_svc"
+	"github.com/modelcontextprotocol/go-sdk/auth"
 )
-
-// mailingListMembersRefusal is the tool error refusing a mailing-list member
-// search a caller without full view cannot be shown: no scope, a list the
-// caller neither manages nor audits, or a project with no such list.
-const mailingListMembersRefusal = "Error: mailing list members are available only for mailing lists you manage or audit: set mailing_list_id to one of them, or project_uid to search all of them in a project."
 
 // mailingListMemberCountRefusal is the tool error refusing a groupsio_member
 // count a caller without full view cannot be shown. It names the allowed
@@ -112,28 +110,36 @@ func projectMailingListUIDs(ctx context.Context, clients *lfxv2.Clients, project
 }
 
 // mailingListMemberFilters is the filters_or clause that narrows a
-// groupsio_member query to the members of the shown lists (empty when none
-// is). ok is false when the clause would exceed peopleFilterChunk terms; the
-// search is then refused rather than read unnarrowed.
-func mailingListMemberFilters(uids []string, shown map[string]bool) (filters []string, ok bool) {
+// groupsio_member query to the members of the shown lists and to the
+// caller's own records, own being participantNarrowing's identity terms. The
+// query service ANDs the clause, as one OR group, with the query's tags and
+// name, so it reads (a shown list) OR (the caller) within the given scope.
+// It is empty when the caller is shown no list and carries no identity; the
+// query is then not sent. ok is false when the clause would exceed
+// peopleFilterChunk terms; the search is then refused rather than read
+// unnarrowed.
+func mailingListMemberFilters(uids []string, shown map[string]bool, own []string) (filters []string, ok bool) {
 	for _, uid := range uids {
 		if shown[uid] {
 			filters = append(filters, "mailing_list_uid:"+uid)
 		}
 	}
+	filters = append(filters, own...)
 	if len(filters) > peopleFilterChunk {
 		return nil, false
 	}
 	return filters, true
 }
 
-// filterMailingListMembers keeps the groupsio_member records of the lists
-// the caller is shown, unchanged; a record without a mailing_list_uid is not
-// shown. It is the second check behind the narrowed query.
-func filterMailingListMembers(resources []*querysvc.Resource, shown map[string]bool) []*querysvc.Resource {
+// filterMailingListMembers keeps, unchanged, the groupsio_member records of
+// the lists the caller is shown and the caller's own records (isOwnRecord);
+// any other record, including one without a mailing_list_uid, is not shown.
+// It is the second check behind the narrowed query.
+func filterMailingListMembers(resources []*querysvc.Resource, shown map[string]bool, tokenInfo *auth.TokenInfo) []*querysvc.Resource {
 	out := make([]*querysvc.Resource, 0, len(resources))
 	for _, r := range resources {
-		if shown[dataString(resourceData(r), "mailing_list_uid")] {
+		data := resourceData(r)
+		if shown[dataString(data, "mailing_list_uid")] || isOwnRecord(data, tokenInfo) {
 			out = append(out, r)
 		}
 	}
