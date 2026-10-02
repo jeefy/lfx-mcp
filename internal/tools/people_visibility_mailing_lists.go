@@ -1,0 +1,129 @@
+// Copyright The Linux Foundation and contributors.
+// SPDX-License-Identifier: MIT
+
+// Package tools provides MCP tool implementations for the LFX MCP server.
+//
+// This file holds the people rule for mailing-list members (see
+// people_visibility.go for the shared principles): a caller without full view
+// is shown the members of a mailing list only when it manages the list
+// (writer) or audits it (auditor) on groupsio_mailing_list:<uid>. That is the
+// platform's intended rule; LFX Self Serve's screen currently shows a public
+// list's members to any signed-in user, so on this point the MCP server
+// follows the intended rule ahead of the platform fix.
+package tools
+
+import (
+	"context"
+	"strings"
+
+	"github.com/linuxfoundation/lfx-mcp/internal/lfxv2"
+	querysvc "github.com/linuxfoundation/lfx-v2-query-service/gen/query_svc"
+)
+
+// mailingListMembersRefusal is the tool error refusing a mailing-list member
+// search a caller without full view cannot be shown: no scope, a list the
+// caller neither manages nor audits, or a project with no such list.
+const mailingListMembersRefusal = "Error: mailing list members are available only for mailing lists you manage or audit: set mailing_list_id to one of them, or project_uid to search all of them in a project."
+
+// mailingListLookupCapRefusal refuses a project-wide member search whose
+// project has more mailing lists than the lookup reads.
+const mailingListLookupCapRefusal = "Error: this project has too many mailing lists to check at once: set mailing_list_id."
+
+// mailingListFilterCapRefusal refuses a project-wide member search whose
+// lists shown to the caller exceed one filter clause.
+const mailingListFilterCapRefusal = "Error: this project has too many mailing lists you manage or audit to search at once: set mailing_list_id."
+
+// mailingListMemberListShown decides, for each mailing list UID, whether the
+// caller is shown its members: writer or auditor on groupsio_mailing_list,
+// checked as the caller in one access-check batch. Both relations are asked,
+// because in the access model auditor does not include writer. Any failure
+// is returned and the caller fails closed.
+func mailingListMemberListShown(ctx context.Context, clients *lfxv2.Clients, listUIDs []string) (map[string]bool, error) {
+	uids := dedupeStrings(listUIDs)
+	shown := make(map[string]bool, len(uids))
+	if len(uids) == 0 {
+		return shown, nil
+	}
+	reqs := make([]string, 0, 2*len(uids))
+	for _, uid := range uids {
+		reqs = append(reqs, "groupsio_mailing_list:"+uid+"#writer", "groupsio_mailing_list:"+uid+"#auditor")
+	}
+	relations, err := clients.CheckRelations(ctx, reqs)
+	if err != nil {
+		return nil, err
+	}
+	for _, uid := range uids {
+		shown[uid] = relations["groupsio_mailing_list:"+uid+"#writer"] || relations["groupsio_mailing_list:"+uid+"#auditor"]
+	}
+	return shown, nil
+}
+
+// projectMailingListUIDs returns the UIDs of the project's mailing lists
+// visible to the caller, from the groupsio_mailing_list records whose parent
+// is the project, read as the caller. It returns errPeopleVisibilityCap when
+// the lookup needs more than peopleLookupMaxPages pages.
+func projectMailingListUIDs(ctx context.Context, clients *lfxv2.Clients, projectUID string) ([]string, error) {
+	resourceType := mailingListResourceType
+	var uids []string
+	var pageToken *string
+	for pages := 0; ; pages++ {
+		if pages >= peopleLookupMaxPages {
+			return nil, errPeopleVisibilityCap
+		}
+		result, err := clients.QuerySvc.QueryResources(ctx, &querysvc.QueryResourcesPayload{
+			Version:   "1",
+			Type:      &resourceType,
+			Parent:    strPtr("project:" + projectUID),
+			PageSize:  peopleLookupPageSize,
+			Sort:      "name_asc",
+			PageToken: pageToken,
+		})
+		if err != nil {
+			return nil, err
+		}
+		for _, r := range result.Resources {
+			uid := dataString(resourceData(r), "uid")
+			if uid == "" && r != nil && r.ID != nil {
+				// The query service's ID is the object ref,
+				// groupsio_mailing_list:<uid>.
+				uid = strings.TrimPrefix(*r.ID, mailingListResourceType+":")
+			}
+			if uid != "" {
+				uids = append(uids, uid)
+			}
+		}
+		if !hasPageToken(result.PageToken) {
+			return dedupeStrings(uids), nil
+		}
+		pageToken = result.PageToken
+	}
+}
+
+// mailingListMemberFilters is the filters_or clause that narrows a
+// groupsio_member query to the members of the shown lists (empty when none
+// is). ok is false when the clause would exceed peopleFilterChunk terms; the
+// search is then refused rather than read unnarrowed.
+func mailingListMemberFilters(uids []string, shown map[string]bool) (filters []string, ok bool) {
+	for _, uid := range uids {
+		if shown[uid] {
+			filters = append(filters, "mailing_list_uid:"+uid)
+		}
+	}
+	if len(filters) > peopleFilterChunk {
+		return nil, false
+	}
+	return filters, true
+}
+
+// filterMailingListMembers keeps the groupsio_member records of the lists
+// the caller is shown, unchanged; a record without a mailing_list_uid is not
+// shown. It is the second check behind the narrowed query.
+func filterMailingListMembers(resources []*querysvc.Resource, shown map[string]bool) []*querysvc.Resource {
+	out := make([]*querysvc.Resource, 0, len(resources))
+	for _, r := range resources {
+		if shown[dataString(resourceData(r), "mailing_list_uid")] {
+			out = append(out, r)
+		}
+	}
+	return out
+}

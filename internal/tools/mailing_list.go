@@ -7,6 +7,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/linuxfoundation/lfx-mcp/internal/lfxv2"
@@ -109,7 +110,7 @@ func RegisterGetMailingListMember(server *mcp.Server) {
 func RegisterSearchMailingListMembers(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "search_mailing_list_members",
-		Description: "Search for LFX mailing list members. Optionally filter by Groups.io mailing list ID, project UID, and/or name. At least one filter is recommended but not required. Filters combine with AND: a record must match every filter given.",
+		Description: "Search for LFX mailing list members. Optionally filter by Groups.io mailing list ID, project UID, and/or name. You get members only of mailing lists you manage or audit: set mailing_list_id, or project_uid for all such lists in a project. Filters combine with AND: a record must match every filter given.",
 		Annotations: &mcp.ToolAnnotations{
 			Title:        "Search Mailing List Members",
 			ReadOnlyHint: true,
@@ -279,6 +280,10 @@ func handleGetMailingList(ctx context.Context, req *mcp.CallToolRequest, args Ge
 	}, nil, nil
 }
 
+// getMailingListMemberOp is the operation named in get_mailing_list_member's
+// upstream error text.
+const getMailingListMemberOp = "failed to get mailing list member"
+
 // handleGetMailingListMember implements the get_mailing_list_member tool logic.
 func handleGetMailingListMember(ctx context.Context, req *mcp.CallToolRequest, args GetMailingListMemberArgs) (*mcp.CallToolResult, any, error) {
 	logger := newToolLogger(ctx, req)
@@ -328,6 +333,22 @@ func handleGetMailingListMember(ctx context.Context, req *mcp.CallToolRequest, a
 
 	clients := mailingListConfig.Clients
 
+	// Without full view, a member record is shown only to the list's
+	// managers and auditors (people_visibility_mailing_lists.go), decided
+	// before the fetch. Any other caller gets the very text the mailing list
+	// service's 404 gets below, so a record that is not shown cannot be told
+	// from one that does not exist.
+	if !HasFullView(ctx) {
+		shown, err := mailingListMemberListShown(ctx, clients, []string{args.MailingListID})
+		if err != nil {
+			logger.ErrorContext(ctx, "mailing list member visibility check failed", "error", err)
+			return errorResult(peopleVisibilityUnavailableMessage), nil, nil
+		}
+		if !shown[args.MailingListID] {
+			return errorResult(serviceLookupNotVisibleMessage(getMailingListMemberOp)), nil, nil
+		}
+	}
+
 	logger.InfoContext(ctx, "fetching mailing list member", "mailing_list_id", args.MailingListID, "member_id", args.MemberID)
 
 	result, err := clients.MailingList.GetGroupsioMember(ctx, &mailinglist.GetGroupsioMemberPayload{
@@ -338,7 +359,7 @@ func handleGetMailingListMember(ctx context.Context, req *mcp.CallToolRequest, a
 		logger.ErrorContext(ctx, "GetGroupsioMember failed", "error", err, "mailing_list_id", args.MailingListID, "member_id", args.MemberID)
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{
-				&mcp.TextContent{Text: friendlyAPIError("failed to get mailing list member", err)},
+				&mcp.TextContent{Text: friendlyAPIError(getMailingListMemberOp, err)},
 			},
 			IsError: true,
 		}, nil, nil
@@ -491,10 +512,58 @@ func handleSearchMailingListMembers(ctx context.Context, req *mcp.CallToolReques
 
 	logger.InfoContext(ctx, "searching mailing list members", "mailing_list_id", args.MailingListID, "project_uid", args.ProjectUID, "name", args.Name, "page_size", pageSize)
 
+	// Without full view, members are shown only for the mailing lists the
+	// caller manages or audits (people_visibility_mailing_lists.go). The
+	// lists are decided before the query: the one named, or every list of
+	// the project visible to the caller, narrowed to the shown ones with
+	// filters_or so a page_token never spans withheld records. A search that
+	// cannot be narrowed (no scope, no shown list, or more shown lists than
+	// one clause holds) is refused rather than read and emptied. name runs
+	// only over shown lists, whose members the caller sees in full.
+	fullView := HasFullView(ctx)
+	var shown map[string]bool
+	if !fullView {
+		var uids []string
+		switch {
+		case args.MailingListID != "":
+			uids = []string{args.MailingListID}
+		case args.ProjectUID != "":
+			uids, err = projectMailingListUIDs(ctx, clients, args.ProjectUID)
+			if errors.Is(err, errPeopleVisibilityCap) {
+				return nil, resourceSearchResult{}, toolError(mailingListLookupCapRefusal)
+			}
+			if err != nil {
+				logger.ErrorContext(ctx, "project mailing list lookup failed", "error", err)
+				return nil, resourceSearchResult{}, toolError(peopleVisibilityUnavailableMessage)
+			}
+		default:
+			return nil, resourceSearchResult{}, toolError(mailingListMembersRefusal)
+		}
+		shown, err = mailingListMemberListShown(ctx, clients, uids)
+		if err != nil {
+			logger.ErrorContext(ctx, "mailing list member visibility check failed", "error", err)
+			return nil, resourceSearchResult{}, toolError(peopleVisibilityUnavailableMessage)
+		}
+		filters, narrowed := mailingListMemberFilters(uids, shown)
+		if !narrowed {
+			return nil, resourceSearchResult{}, toolError(mailingListFilterCapRefusal)
+		}
+		if len(filters) == 0 {
+			return nil, resourceSearchResult{}, toolError(mailingListMembersRefusal)
+		}
+		if args.MailingListID == "" {
+			payload.FiltersOr = filters
+		}
+	}
+
 	result, err := clients.QuerySvc.QueryResources(ctx, payload)
 	if err != nil {
 		logger.ErrorContext(ctx, "QueryResources failed", "error", err)
 		return nil, resourceSearchResult{}, toolError(friendlyAPIError("failed to search mailing list members", err))
+	}
+
+	if !fullView {
+		result.Resources = filterMailingListMembers(result.Resources, shown)
 	}
 
 	out := newResourceSearchResult("mailing-list members", result, pageSize, args.PageToken != "")

@@ -82,7 +82,10 @@ func TestCountLFXResources_NonPeopleTypesAreUngated(t *testing.T) {
 		{"committee with name", CountLFXResourcesArgs{Type: committeeResourceType, Name: "TOC"}, true},
 		{"meeting with filters", CountLFXResourcesArgs{Type: meetingResourceType, FiltersAll: []string{"visibility:public"}}, true},
 		{"project with tags", CountLFXResourcesArgs{Type: projectResourceType, Tags: []string{"slug:cncf"}}, true},
-		{"mailing list member with name", CountLFXResourcesArgs{Type: mailingListMemberResourceType, Name: "pat"}, true},
+		// Mailing lists, and their subscriber counts, stay ungated; their
+		// members do not (TestCountLFXResources_MailingListMembersFollowTheRule).
+		{"mailing list with name", CountLFXResourcesArgs{Type: mailingListResourceType, Name: "dev"}, true},
+		{"mailing list member with name", CountLFXResourcesArgs{Type: mailingListMemberResourceType, Name: "pat"}, false},
 	})
 }
 
