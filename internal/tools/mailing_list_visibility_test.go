@@ -122,7 +122,7 @@ func TestSearchMailingListMembers_FailsClosed(t *testing.T) {
 		api.FailAccessCheck(http.StatusInternalServerError)
 		api.Respond(resourcesPath, page([]string{mailingListMemberDoc("gm-1", mlWriterUID, "subscriber@example.test")}, ""))
 		_, out, err := handleSearchMailingListMembers(context.Background(), stubCallToolRequest(), SearchMailingListMembersArgs{MailingListID: mlWriterUID})
-		if err == nil || err.Error() != peopleVisibilityUnavailableMessage || len(out.Resources) != 0 {
+		if err == nil || err.Error() != mailingListVisibilityUnavailableMessage || len(out.Resources) != 0 {
 			t.Fatalf("expected the unavailable message and no records, got %v %+v", err, out)
 		}
 		if n := len(mailingListMemberQueries(api)); n != 0 {
@@ -134,7 +134,7 @@ func TestSearchMailingListMembers_FailsClosed(t *testing.T) {
 		api.GrantRelations(listRelation(mlWriterUID, "writer"))
 		api.RespondStatus(resourcesPath, http.StatusInternalServerError, `{"message":"boom"}`)
 		_, _, err := handleSearchMailingListMembers(context.Background(), stubCallToolRequest(), SearchMailingListMembersArgs{ProjectUID: "P1"})
-		if err == nil || err.Error() != peopleVisibilityUnavailableMessage {
+		if err == nil || err.Error() != mailingListVisibilityUnavailableMessage {
 			t.Fatalf("expected the unavailable message, got %v", err)
 		}
 	})
@@ -180,6 +180,42 @@ func TestSearchMailingListMembers_ProjectIsNarrowedToShownLists(t *testing.T) {
 	}
 	if all := everything(t, nil, out, nil); strings.Contains(all, "three@example.test") || strings.Contains(all, mlSubscriberUID) {
 		t.Errorf("the withheld list must be neither returned nor named:\n%s", all)
+	}
+}
+
+func TestSearchMailingListMembers_ProjectListUIDFromDataOrID(t *testing.T) {
+	// One list record carries only the object ref as its ID, the other only
+	// data.uid: both name the list by its bare uid.
+	const idOnlyUID, dataOnlyUID = "180001", "180002"
+	api := setupMailingListTest(t)
+	api.GrantRelations(listRelation(idOnlyUID, "writer"), listRelation(dataOnlyUID, "auditor"))
+	api.Respond(resourcesPath, page([]string{
+		fmt.Sprintf(`{"type": "groupsio_mailing_list", "id": "groupsio_mailing_list:%s", "data": {"group_id": %s, "project_uid": "P1"}}`, idOnlyUID, idOnlyUID),
+		fmt.Sprintf(`{"type": "groupsio_mailing_list", "data": {"uid": %q, "group_id": %s, "project_uid": "P1"}}`, dataOnlyUID, dataOnlyUID),
+	}, ""))
+	api.Respond(resourcesPath, page([]string{
+		mailingListMemberDoc("gm-1", idOnlyUID, "one@example.test"),
+		mailingListMemberDoc("gm-2", dataOnlyUID, "two@example.test"),
+	}, ""))
+
+	_, out, err := handleSearchMailingListMembers(context.Background(), stubCallToolRequest(), SearchMailingListMembersArgs{ProjectUID: "P1"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	bodies := api.AccessCheckBodies()
+	want := []string{listRelation(idOnlyUID, "writer"), listRelation(idOnlyUID, "auditor"), listRelation(dataOnlyUID, "writer"), listRelation(dataOnlyUID, "auditor")}
+	if len(bodies) != 1 || !slices.Equal(bodies[0], want) {
+		t.Errorf("expected the relations of both bare uids, got %v", bodies)
+	}
+	q := mailingListMemberQueries(api)
+	if len(q) != 1 {
+		t.Fatalf("expected one member query, got %d", len(q))
+	}
+	if got := strings.Join(q[0].Query["filters_or"], ","); got != "mailing_list_uid:"+idOnlyUID+",mailing_list_uid:"+dataOnlyUID {
+		t.Errorf("expected the query narrowed to both lists, got filters_or %q", got)
+	}
+	if len(out.Resources) != 2 {
+		t.Errorf("expected both members, got %d", len(out.Resources))
 	}
 }
 
@@ -277,7 +313,7 @@ func TestGetMailingListMember_CheckFailureFailsClosed(t *testing.T) {
 	api.FailAccessCheck(http.StatusBadGateway)
 	api.Respond(fullViewMailingListMemberPath, fullViewMailingListMemberRecord)
 	res, _, _ := handleGetMailingListMember(context.Background(), stubCallToolRequest(), GetMailingListMemberArgs{MailingListID: fullViewMailingListID, MemberID: fullViewMailingListMemberID})
-	if !res.IsError || strings.TrimSpace(allResultText(t, res)) != peopleVisibilityUnavailableMessage {
+	if !res.IsError || strings.TrimSpace(allResultText(t, res)) != mailingListVisibilityUnavailableMessage {
 		t.Fatalf("expected the unavailable message, got %s", allResultText(t, res))
 	}
 	if strings.Contains(allResultText(t, res), "subscriber@example.test") {
@@ -286,19 +322,24 @@ func TestGetMailingListMember_CheckFailureFailsClosed(t *testing.T) {
 }
 
 func TestCountLFXResources_MailingListMembersFollowTheRule(t *testing.T) {
-	refusal := countRefusal(mailingListMemberResourceType, "parent=groupsio_mailing_list:<uid> for a mailing list you manage or audit")
+	// The refusal names the allowed form without saying it is what LFX Self
+	// Serve shows: this rule is stricter than Self Serve's screen.
+	const refusal = "Error: counting groupsio_member is available only with parent=groupsio_mailing_list:<uid> for a mailing list you manage or audit."
 	for _, tc := range []struct {
 		name    string
 		grant   string
 		args    CountLFXResourcesArgs
 		allowed bool
+		// checks is whether the gate asks access-check: a parent that
+		// names no list is refused before any relation is checked.
+		checks bool
 	}{
-		{"writer parent", listRelation(mlWriterUID, "writer"), CountLFXResourcesArgs{Parent: "groupsio_mailing_list:" + mlWriterUID, Tags: []string{"status:normal"}}, true},
-		{"auditor parent", listRelation(mlAuditorUID, "auditor"), CountLFXResourcesArgs{Parent: "groupsio_mailing_list:" + mlAuditorUID}, true},
-		{"subscriber parent", listRelation(mlSubscriberUID, "member"), CountLFXResourcesArgs{Parent: "groupsio_mailing_list:" + mlSubscriberUID}, false},
-		{"no parent", listRelation(mlWriterUID, "writer"), CountLFXResourcesArgs{TagsAll: []string{"mailing_list_uid:" + mlWriterUID}}, false},
-		{"project parent", listRelation(mlWriterUID, "writer"), CountLFXResourcesArgs{Parent: "project:P1"}, false},
-		{"empty list uid", listRelation(mlWriterUID, "writer"), CountLFXResourcesArgs{Parent: "groupsio_mailing_list:"}, false},
+		{"writer parent", listRelation(mlWriterUID, "writer"), CountLFXResourcesArgs{Parent: "groupsio_mailing_list:" + mlWriterUID, Tags: []string{"status:normal"}}, true, true},
+		{"auditor parent", listRelation(mlAuditorUID, "auditor"), CountLFXResourcesArgs{Parent: "groupsio_mailing_list:" + mlAuditorUID}, true, true},
+		{"subscriber parent", listRelation(mlSubscriberUID, "member"), CountLFXResourcesArgs{Parent: "groupsio_mailing_list:" + mlSubscriberUID}, false, true},
+		{"no parent", listRelation(mlWriterUID, "writer"), CountLFXResourcesArgs{TagsAll: []string{"mailing_list_uid:" + mlWriterUID}}, false, false},
+		{"project parent", listRelation(mlWriterUID, "writer"), CountLFXResourcesArgs{Parent: "project:P1"}, false, false},
+		{"empty list uid", listRelation(mlWriterUID, "writer"), CountLFXResourcesArgs{Parent: "groupsio_mailing_list:"}, false, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			api := setupCountTest(t)
@@ -308,6 +349,9 @@ func TestCountLFXResources_MailingListMembersFollowTheRule(t *testing.T) {
 			args.Type = mailingListMemberResourceType
 			res, _, _ := handleCountLFXResources(context.Background(), stubCallToolRequest(), args)
 			counted := len(api.RequestsTo(countPath))
+			if checked := len(api.RequestsTo(accessCheckPath)) != 0; checked != tc.checks {
+				t.Errorf("access-check called: %v, want %v", checked, tc.checks)
+			}
 			if tc.allowed {
 				if res.IsError || counted != 1 {
 					t.Fatalf("expected the count, got %s", allResultText(t, res))
@@ -323,7 +367,7 @@ func TestCountLFXResources_MailingListMembersFollowTheRule(t *testing.T) {
 		api := setupCountTest(t)
 		api.FailAccessCheck(http.StatusInternalServerError)
 		res, _, _ := handleCountLFXResources(context.Background(), stubCallToolRequest(), CountLFXResourcesArgs{Type: mailingListMemberResourceType, Parent: "groupsio_mailing_list:" + mlWriterUID})
-		if !res.IsError || strings.TrimSpace(allResultText(t, res)) != peopleVisibilityUnavailableMessage || len(api.RequestsTo(countPath)) != 0 {
+		if !res.IsError || strings.TrimSpace(allResultText(t, res)) != mailingListVisibilityUnavailableMessage || len(api.RequestsTo(countPath)) != 0 {
 			t.Fatalf("expected the unavailable message, got %s", allResultText(t, res))
 		}
 	})

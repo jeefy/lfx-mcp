@@ -451,17 +451,16 @@ func peopleCountGate(ctx context.Context, clients *lfxv2.Clients, tokenInfo *aut
 		}
 		return "", nil
 	case mailingListMemberResourceType:
-		allowed := "parent=groupsio_mailing_list:<uid> for a mailing list you manage or audit"
 		uid, ok := strings.CutPrefix(args.Parent, mailingListResourceType+":")
 		if !ok || uid == "" {
-			return countRefusal(args.Type, allowed), nil
+			return mailingListMemberCountRefusal, nil
 		}
 		shown, err := mailingListMemberListShown(ctx, clients, []string{uid})
 		if err != nil {
 			return "", err
 		}
 		if !shown[uid] {
-			return countRefusal(args.Type, allowed), nil
+			return mailingListMemberCountRefusal, nil
 		}
 		return "", nil
 	case meetingRegistrantResourceType:
@@ -549,6 +548,16 @@ var PeopleToolNames = []string{
 	"search_past_meetings", "get_past_meeting",
 	"search_past_meeting_summaries", "get_past_meeting_summary",
 	"search_mailing_list_members", "get_mailing_list_member",
+}
+
+// peopleCountUnavailableMessage is the fail-closed tool error of a people
+// count whose gate could not decide: the mailing-list member rule has its
+// own wording (mailingListVisibilityUnavailableMessage).
+func peopleCountUnavailableMessage(resourceType string) string {
+	if resourceType == mailingListMemberResourceType {
+		return mailingListVisibilityUnavailableMessage
+	}
+	return peopleVisibilityUnavailableMessage
 }
 
 // countRefusal is the tool error refusing a count of a people type for a

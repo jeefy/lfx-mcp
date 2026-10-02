@@ -321,7 +321,12 @@ that.
   than `peopleFilterChunk`, is refused with a tool error naming the allowed
   form. `get_mailing_list_member` decides before the fetch, and a member of
   a list the caller does not manage or audit gets the mailing list
-  service's 404 text (`serviceLookupNotVisibleMessage`).
+  service's 404 text (`serviceLookupNotVisibleMessage`). The mailing-list
+  rule's own texts do not say "what LFX Self Serve shows", since the rule
+  is stricter than that screen: its count refusal is
+  `mailingListMemberCountRefusal` rather than `countRefusal`, and it fails
+  closed with `mailingListVisibilityUnavailableMessage` rather than
+  `peopleVisibilityUnavailableMessage`.
 - **Refuse filters that can probe for a person** (`name`, `org_name`,
   e-mail or username tags, `filters_or` / `filters_all` on people fields)
   wherever the rule would not show the caller that list, with a tool error

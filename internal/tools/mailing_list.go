@@ -342,7 +342,7 @@ func handleGetMailingListMember(ctx context.Context, req *mcp.CallToolRequest, a
 		shown, err := mailingListMemberListShown(ctx, clients, []string{args.MailingListID})
 		if err != nil {
 			logger.ErrorContext(ctx, "mailing list member visibility check failed", "error", err)
-			return errorResult(peopleVisibilityUnavailableMessage), nil, nil
+			return errorResult(mailingListVisibilityUnavailableMessage), nil, nil
 		}
 		if !shown[args.MailingListID] {
 			return errorResult(serviceLookupNotVisibleMessage(getMailingListMemberOp)), nil, nil
@@ -534,7 +534,7 @@ func handleSearchMailingListMembers(ctx context.Context, req *mcp.CallToolReques
 			}
 			if err != nil {
 				logger.ErrorContext(ctx, "project mailing list lookup failed", "error", err)
-				return nil, resourceSearchResult{}, toolError(peopleVisibilityUnavailableMessage)
+				return nil, resourceSearchResult{}, toolError(mailingListVisibilityUnavailableMessage)
 			}
 		default:
 			return nil, resourceSearchResult{}, toolError(mailingListMembersRefusal)
@@ -542,7 +542,7 @@ func handleSearchMailingListMembers(ctx context.Context, req *mcp.CallToolReques
 		shown, err = mailingListMemberListShown(ctx, clients, uids)
 		if err != nil {
 			logger.ErrorContext(ctx, "mailing list member visibility check failed", "error", err)
-			return nil, resourceSearchResult{}, toolError(peopleVisibilityUnavailableMessage)
+			return nil, resourceSearchResult{}, toolError(mailingListVisibilityUnavailableMessage)
 		}
 		filters, narrowed := mailingListMemberFilters(uids, shown)
 		if !narrowed {

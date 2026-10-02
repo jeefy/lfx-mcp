@@ -186,7 +186,7 @@ func handleCountLFXResources(ctx context.Context, req *mcp.CallToolRequest, args
 		refusal, err := peopleCountGate(ctx, clients, tokenInfo, args)
 		if err != nil {
 			logger.ErrorContext(ctx, "people count visibility check failed", "error", err, "type", args.Type)
-			return errorResult(peopleVisibilityUnavailableMessage), nil, nil
+			return errorResult(peopleCountUnavailableMessage(args.Type)), nil, nil
 		}
 		if refusal != "" {
 			return errorResult(refusal), nil, nil

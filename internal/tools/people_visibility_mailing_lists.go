@@ -25,6 +25,18 @@ import (
 // caller neither manages nor audits, or a project with no such list.
 const mailingListMembersRefusal = "Error: mailing list members are available only for mailing lists you manage or audit: set mailing_list_id to one of them, or project_uid to search all of them in a project."
 
+// mailingListMemberCountRefusal is the tool error refusing a groupsio_member
+// count a caller without full view cannot be shown. It names the allowed
+// form without countRefusal's reference to LFX Self Serve, because this rule
+// is stricter than what Self Serve shows today.
+const mailingListMemberCountRefusal = "Error: counting " + mailingListMemberResourceType + " is available only with parent=" + mailingListResourceType + ":<uid> for a mailing list you manage or audit."
+
+// mailingListVisibilityUnavailableMessage is the fail-closed tool error of
+// the mailing-list member rule, used in place of
+// peopleVisibilityUnavailableMessage, which speaks of what LFX Self Serve
+// shows: this rule is the platform's intended one, not today's screen.
+const mailingListVisibilityUnavailableMessage = "Error: could not confirm which mailing lists you manage or audit; try again."
+
 // mailingListLookupCapRefusal refuses a project-wide member search whose
 // project has more mailing lists than the lookup reads.
 const mailingListLookupCapRefusal = "Error: this project has too many mailing lists to check at once: set mailing_list_id."

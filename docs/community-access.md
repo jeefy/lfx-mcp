@@ -11,7 +11,7 @@ membership, and the actions your role allows.
 Access is for people who take part in a Linux Foundation project or foundation that uses LFX Self Serve, whether
 as a member or manager of a group (a committee, working group, TSC or board), a meeting host or guest, a project
 or foundation administrator, or an organization admin. Through the MCP you see and do what LFX Self Serve lets
-you see and do.
+you see and do, with the few differences listed below.
 
 ## What you can see and do
 
@@ -46,6 +46,8 @@ managed in LFX Self Serve, as they are today.
   organize the meeting or have a manager or viewer role on its group or project;
 - see an organization's memberships, key contacts or group seats unless you have a role at that organization, are
   one of its key contacts, or have a manager or viewer role on the project the membership is for;
+- see a mailing list's members unless you manage or audit that mailing list; this follows the platform's intended
+  rule and is stricter than what LFX Self Serve shows today;
 - access LFX Insights or other Linux Foundation analytics and reporting data;
 - make changes your LFX roles do not allow.
 
