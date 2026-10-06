@@ -12,6 +12,7 @@ import (
 	"github.com/linuxfoundation/lfx-mcp/internal/lfxv2"
 	meetingservice "github.com/linuxfoundation/lfx-v2-meeting-service/gen/meeting_service"
 	querysvc "github.com/linuxfoundation/lfx-v2-query-service/gen/query_svc"
+	"github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -36,6 +37,49 @@ const pastMeetingRecordingResourceType = "v1_past_meeting_recording"
 // pastMeetingTranscriptResourceType is the resource type filter for past meeting transcript queries.
 const pastMeetingTranscriptResourceType = "v1_past_meeting_transcript"
 
+// Lookup-tag prefixes the meeting service writes on its index documents so a
+// record can be fetched by id. Meeting and summary documents carry `id`, not
+// `uid`, so a `uid:` filter never matches them. The tag alone is not enough
+// either: the meeting id tag is also written on other document types that
+// refer to the same meeting, so every lookup keeps its `Type` filter.
+const (
+	meetingIDTagPrefix            = "meeting_id:"
+	pastMeetingSummaryIDTagPrefix = "past_meeting_summary_id:"
+)
+
+// registrantScopeRefusal is the tool error for a caller without full view who
+// names no meeting: LFX Self Serve shows registrants per meeting, to its
+// organizers and registrants, and has no cross-meeting list for anyone else.
+const registrantScopeRefusal = "Error: registrants are available per meeting as LFX Self Serve shows them to you: set meeting_id."
+
+// registrantFilterRefusal is the tool error for a name filter from a caller
+// without full view on a meeting they do not organize.
+const registrantFilterRefusal = "Error: name is available for meetings you organize: set meeting_id to a meeting you organize."
+
+// resourceLookup selects how a single record is fetched from the query
+// service. A non-empty tagPrefix looks the record up by its lookup tag
+// (`<tagPrefix><uid>`); an empty one keeps the `uid:` field filter that
+// registrant and participant documents are matched by.
+type resourceLookup struct {
+	tagPrefix string
+}
+
+// payload builds the single-record query for uid of the given resource type.
+func (l resourceLookup) payload(resourceType, uid string) *querysvc.QueryResourcesPayload {
+	payload := &querysvc.QueryResourcesPayload{
+		Version:  "1",
+		Type:     &resourceType,
+		PageSize: 1,
+		Sort:     "name_asc",
+	}
+	if l.tagPrefix != "" {
+		payload.TagsAll = []string{l.tagPrefix + uid}
+	} else {
+		payload.Filters = []string{fmt.Sprintf("uid:%s", uid)}
+	}
+	return payload
+}
+
 // MeetingConfig holds configuration shared by meeting tools.
 type MeetingConfig struct {
 	// Clients is the shared LFX v2 API client instance. It must be created once
@@ -58,7 +102,7 @@ func RegisterSearchMeetings(server *mcp.Server, asGroups bool) {
 	if asGroups {
 		mcp.AddTool(server, &mcp.Tool{
 			Name:        "search_meetings",
-			Description: "Search for LFX meetings (group calls, also called committee calls, working group sessions) using the query service. Meetings, their occurrences, registrants, attendance and summaries live HERE - prefer these tools over the semantic layer or query_lfx_lens for meeting questions. Events (conferences, registrations, attendees, speakers, sponsorships) are standard metrics: when query_lfx_standard_metrics is available to you, read read_lfx_standard_metrics_guidance and use it.",
+			Description: "Search for LFX meetings (group calls, also called committee calls, working group sessions) using the query service. Returns the meetings visible to the caller, as in LFX Self Serve. Events (conferences, registrations, attendees, speakers, sponsorships) are standard metrics: when query_lfx_standard_metrics is available to you, read read_lfx_standard_metrics_guidance and use it.",
 			Annotations: &mcp.ToolAnnotations{
 				Title:        "Search Meetings",
 				ReadOnlyHint: true,
@@ -68,7 +112,7 @@ func RegisterSearchMeetings(server *mcp.Server, asGroups bool) {
 	}
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "search_meetings",
-		Description: "Search for LFX meetings (committee calls, working group sessions) using the query service. Meetings, their occurrences, registrants, attendance and summaries live HERE - prefer these tools over the semantic layer or query_lfx_lens for meeting questions. Events (conferences, registrations, attendees, speakers, sponsorships) are standard metrics: when query_lfx_standard_metrics is available to you, read read_lfx_standard_metrics_guidance and use it.",
+		Description: "Search for LFX meetings (committee calls, working group sessions) using the query service. Returns the meetings visible to the caller, as in LFX Self Serve. Events (conferences, registrations, attendees, speakers, sponsorships) are standard metrics: when query_lfx_standard_metrics is available to you, read read_lfx_standard_metrics_guidance and use it.",
 		Annotations: &mcp.ToolAnnotations{
 			Title:        "Search Meetings",
 			ReadOnlyHint: true,
@@ -96,7 +140,7 @@ func RegisterSearchMeetingRegistrants(server *mcp.Server, asGroups bool) {
 	if asGroups {
 		mcp.AddTool(server, &mcp.Tool{
 			Name:        "search_meeting_registrants",
-			Description: "Search for LFX meeting registrants using the query service. Supports filtering by meeting ID or group UID (also known as committee UID) and by registrant name, with paging.",
+			Description: "Search for LFX meeting registrants using the query service. Supports filtering by meeting ID or group UID (also known as committee UID) and by registrant name, with paging. You get, per meeting_id, the registrant list LFX Self Serve shows you: the full list for meetings you organize, the guest list without e-mail for meetings you are registered for, nothing for others.",
 			Annotations: &mcp.ToolAnnotations{
 				Title:        "Search Meeting Registrants",
 				ReadOnlyHint: true,
@@ -106,7 +150,7 @@ func RegisterSearchMeetingRegistrants(server *mcp.Server, asGroups bool) {
 	}
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "search_meeting_registrants",
-		Description: "Search for LFX meeting registrants using the query service. Supports filtering by meeting ID or committee UID and by registrant name, with paging.",
+		Description: "Search for LFX meeting registrants using the query service. Supports filtering by meeting ID or committee UID and by registrant name, with paging. You get, per meeting_id, the registrant list LFX Self Serve shows you: the full list for meetings you organize, the guest list without e-mail for meetings you are registered for, nothing for others.",
 		Annotations: &mcp.ToolAnnotations{
 			Title:        "Search Meeting Registrants",
 			ReadOnlyHint: true,
@@ -134,7 +178,7 @@ func RegisterSearchPastMeetingParticipants(server *mcp.Server, asGroups bool) {
 	if asGroups {
 		mcp.AddTool(server, &mcp.Tool{
 			Name:        "search_past_meeting_participants",
-			Description: "Search for LFX past meeting participants using the query service. Filter by past meeting ID (meeting_and_occurrence_id), group UID (also known as committee UID) or project UID, by name, by meeting start date range (date_from/date_to, resolved through the past meetings of that project or group), attended_only, and exact stored org_name. People are de-duplicated by identity like LFX Self Serve: LFX username when both records have one, else e-mail, else normalised name; dedupe=false returns raw records. count_only returns the record count with complete and visibility. Results cover only the meetings visible to the caller. truncated_records=true means the search reached the record cap before all meetings were checked.",
+			Description: "Search for LFX past meeting participants. Filter by past meeting ID (meeting_and_occurrence_id), group UID (also known as committee UID) or project UID, by name, by meeting start date range (date_from/date_to, resolved through the past meetings of that project or group), attended_only, and exact stored org_name. People are de-duplicated by identity like LFX Self Serve: LFX username when both records have one, else e-mail, else normalised name; dedupe=false returns raw records. count_only returns the record count with complete and visibility. Results cover only the meetings and participant records visible to the caller. Per past_meeting_id or date range you get what LFX Self Serve shows you: the full list for past meetings you organize; hosts' names and your own record for public unrestricted ones and ones you hosted, were invited to, attended or whose group you belong to; else only yours. truncated_records=true means the search reached the record cap before all meetings were checked.",
 			Annotations: &mcp.ToolAnnotations{
 				Title:        "Search Past Meeting Participants",
 				ReadOnlyHint: true,
@@ -144,7 +188,7 @@ func RegisterSearchPastMeetingParticipants(server *mcp.Server, asGroups bool) {
 	}
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "search_past_meeting_participants",
-		Description: "Search for LFX past meeting participants using the query service. Filter by past meeting ID (meeting_and_occurrence_id), committee UID or project UID, by name, by meeting start date range (date_from/date_to, resolved through the past meetings of that project or committee), attended_only, and exact stored org_name. People are de-duplicated by identity like LFX Self Serve: LFX username when both records have one, else e-mail, else normalised name; dedupe=false returns raw records. count_only returns the record count with complete and visibility. Results cover only the meetings visible to the caller. truncated_records=true means the search reached the record cap before all meetings were checked.",
+		Description: "Search for LFX past meeting participants. Filter by past meeting ID (meeting_and_occurrence_id), committee UID or project UID, by name, by meeting start date range (date_from/date_to, resolved through the past meetings of that project or committee), attended_only, and exact stored org_name. People are de-duplicated by identity like LFX Self Serve: LFX username when both records have one, else e-mail, else normalised name; dedupe=false returns raw records. count_only returns the record count with complete and visibility. Results cover only the meetings and participant records visible to the caller. Per past_meeting_id or date range you get what LFX Self Serve shows you: the full list for past meetings you organize; hosts' names and your own record for public unrestricted ones and ones you hosted, were invited to, attended or whose committee you belong to; else only yours. truncated_records=true means the search reached the record cap before all meetings were checked.",
 		Annotations: &mcp.ToolAnnotations{
 			Title:        "Search Past Meeting Participants",
 			ReadOnlyHint: true,
@@ -168,7 +212,7 @@ func RegisterGetPastMeetingParticipant(server *mcp.Server) {
 func RegisterSearchPastMeetingSummaries(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "search_past_meeting_summaries",
-		Description: "Search for LFX past meeting summaries using the query service. Supports filtering by past meeting ID (the meeting_and_occurrence_id value, e.g. 91461158520-1771596000000), project UID, and name.",
+		Description: "Search for LFX past meeting summaries using the query service. Supports filtering by past meeting ID (the meeting_and_occurrence_id value, e.g. 91461158520-1771596000000), project UID, and name. A non-empty edited_content supersedes the generated content; present it.",
 		Annotations: &mcp.ToolAnnotations{
 			Title:        "Search Past Meeting Summaries",
 			ReadOnlyHint: true,
@@ -180,7 +224,7 @@ func RegisterSearchPastMeetingSummaries(server *mcp.Server) {
 func RegisterGetPastMeetingSummary(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get_past_meeting_summary",
-		Description: "Get an LFX past meeting summary by its UID using the query service.",
+		Description: "Get an LFX past meeting summary by its UID using the query service. A non-empty edited_content supersedes the generated content; present it.",
 		Annotations: &mcp.ToolAnnotations{
 			Title:        "Get Past Meeting Summary",
 			ReadOnlyHint: true,
@@ -196,7 +240,7 @@ func RegisterSearchPastMeetings(server *mcp.Server, asGroups bool) {
 	if asGroups {
 		mcp.AddTool(server, &mcp.Tool{
 			Name:        "search_past_meetings",
-			Description: "Search for LFX past meetings (v1_past_meeting) using the query service. Supports filtering by project, group (also known as committee), meeting ID, date range, and name. Past attendance and summaries live here, not in the semantic layer or query_lfx_lens. Filters combine with AND: a record must match every filter given.",
+			Description: "Search for LFX past meetings (v1_past_meeting) using the query service. Supports filtering by project, group (also known as committee), meeting ID, date range, and name. Returns the past meetings visible to the caller. Filters combine with AND: a record must match every filter given.",
 			Annotations: &mcp.ToolAnnotations{
 				Title:        "Search Past Meetings",
 				ReadOnlyHint: true,
@@ -206,7 +250,7 @@ func RegisterSearchPastMeetings(server *mcp.Server, asGroups bool) {
 	}
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "search_past_meetings",
-		Description: "Search for LFX past meetings using the query service. Supports filtering by project, committee, meeting ID, date range, and name. Past attendance and summaries live here, not in the semantic layer or query_lfx_lens. Filters combine with AND: a record must match every filter given.",
+		Description: "Search for LFX past meetings using the query service. Supports filtering by project, committee, meeting ID, date range, and name. Returns the past meetings visible to the caller. Filters combine with AND: a record must match every filter given.",
 		Annotations: &mcp.ToolAnnotations{
 			Title:        "Search Past Meetings",
 			ReadOnlyHint: true,
@@ -294,7 +338,7 @@ type SearchPastMeetingParticipantsArgs struct {
 	MaxMeetings   int    `json:"max_meetings,omitempty" jsonschema:"With a date range: maximum past meetings to expand (default 50, max 200), earliest first (past meetings sort chronologically); truncated_meetings=true in the result when the cap was hit"`
 	AttendedOnly  bool   `json:"attended_only,omitempty" jsonschema:"Only participants who attended (is_attended:true)"`
 	OrgName       string `json:"org_name,omitempty" jsonschema:"Exact stored organisation name, case-sensitive (copy it from a participant record)"`
-	CountOnly     bool   `json:"count_only,omitempty" jsonschema:"Return only {count, complete, visibility, note}: the number of participant records (not distinct people) matching the filters"`
+	CountOnly     bool   `json:"count_only,omitempty" jsonschema:"Return only {count, complete, visibility, note}: the number of participant records (not people or attendances) matching the filters"`
 	Dedupe        *bool  `json:"dedupe,omitempty" jsonschema:"People are de-duplicated by identity like LFX Self Serve: LFX username when both records have one, else e-mail, else normalised name; dedupe=false returns raw records. default true; applies within the returned page (or the whole date range)"`
 	Sort          string `json:"sort,omitempty" jsonschema:"Sort order: name_asc (default), name_desc, updated_asc, updated_desc; with a date range the sort applies within each meeting and meetings are listed earliest first"`
 	PageSize      int    `json:"page_size,omitempty" jsonschema:"Number of results per page (default 10, max 100); ignored with a date range. truncated_records=true means the search reached the record cap before all meetings were checked"`
@@ -312,7 +356,7 @@ type SearchPastMeetingParticipantsGroupArgs struct {
 	MaxMeetings   int    `json:"max_meetings,omitempty" jsonschema:"With a date range: maximum past meetings to expand (default 50, max 200), earliest first (past meetings sort chronologically); truncated_meetings=true in the result when the cap was hit"`
 	AttendedOnly  bool   `json:"attended_only,omitempty" jsonschema:"Only participants who attended (is_attended:true)"`
 	OrgName       string `json:"org_name,omitempty" jsonschema:"Exact stored organisation name, case-sensitive (copy it from a participant record)"`
-	CountOnly     bool   `json:"count_only,omitempty" jsonschema:"Return only {count, complete, visibility, note}: the number of participant records (not distinct people) matching the filters"`
+	CountOnly     bool   `json:"count_only,omitempty" jsonschema:"Return only {count, complete, visibility, note}: the number of participant records (not people or attendances) matching the filters"`
 	Dedupe        *bool  `json:"dedupe,omitempty" jsonschema:"People are de-duplicated by identity like LFX Self Serve: LFX username when both records have one, else e-mail, else normalised name; dedupe=false returns raw records. default true; applies within the returned page (or the whole date range)"`
 	Sort          string `json:"sort,omitempty" jsonschema:"Sort order: name_asc (default), name_desc, updated_asc, updated_desc; with a date range the sort applies within each meeting and meetings are listed earliest first"`
 	PageSize      int    `json:"page_size,omitempty" jsonschema:"Number of results per page (default 10, max 100); ignored with a date range. truncated_records=true means the search reached the record cap before all meetings were checked"`
@@ -340,31 +384,24 @@ type GetPastMeetingSummaryArgs struct {
 }
 
 // handleSearchMeetings implements the search_meetings tool logic.
-func handleSearchMeetings(ctx context.Context, req *mcp.CallToolRequest, args SearchMeetingsArgs) (*mcp.CallToolResult, any, error) {
+func handleSearchMeetings(ctx context.Context, req *mcp.CallToolRequest, args SearchMeetingsArgs) (*mcp.CallToolResult, resourceSearchResult, error) {
 	logger := newToolLogger(ctx, req)
 
 	if meetingConfig == nil {
 		logger.ErrorContext(ctx, "meeting tools not configured")
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: "Error: meeting tools not configured"},
-			},
-			IsError: true,
-		}, nil, nil
+		return nil, resourceSearchResult{}, toolError("Error: meeting tools not configured")
 	}
 
-	mcpToken, err := lfxv2.ExtractMCPToken(req.Extra.TokenInfo)
+	var tokenInfo *auth.TokenInfo
+	if req.Extra != nil {
+		tokenInfo = req.Extra.TokenInfo
+	}
+	ctx, err := meetingConfig.Clients.TokenFromRequest(ctx, tokenInfo)
 	if err != nil {
-		logger.ErrorContext(ctx, "failed to extract MCP token", "error", err)
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: fmt.Sprintf("Error: failed to extract MCP token: %v", err)},
-			},
-			IsError: true,
-		}, nil, nil
+		logger.ErrorContext(ctx, "failed to resolve LFX authentication", "error", err)
+		return nil, resourceSearchResult{}, toolError(fmt.Sprintf("Error: failed to extract MCP token: %v", err))
 	}
 
-	ctx = meetingConfig.Clients.WithMCPToken(ctx, mcpToken)
 	clients := meetingConfig.Clients
 
 	pageSize := args.PageSize
@@ -422,48 +459,38 @@ func handleSearchMeetings(ctx context.Context, req *mcp.CallToolRequest, args Se
 	result, err := clients.QuerySvc.QueryResources(ctx, payload)
 	if err != nil {
 		logger.ErrorContext(ctx, "QueryResources failed", "error", err)
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: friendlyAPIError("failed to search meetings", err)},
-			},
-			IsError: true,
-		}, nil, nil
+		return nil, resourceSearchResult{}, toolError(friendlyAPIError("failed to search meetings", err))
 	}
 
-	type searchResult struct {
-		Resources []*querysvc.Resource `json:"resources"`
-		PageToken *string              `json:"page_token,omitempty"`
+	for _, res := range result.Resources {
+		if res != nil {
+			res.Data = trimMeetingResultFields(res.Data)
+		}
+	}
+	if !HasFullView(ctx) {
+		trimResourcesData(result.Resources, trimMeetingPeopleFields)
 	}
 
-	out := searchResult{
-		Resources: result.Resources,
-		PageToken: result.PageToken,
-	}
+	out := newResourceSearchResult("meetings", result, pageSize, args.PageToken != "")
 
-	var pageWarning string
-	if result.PageToken != nil && len(result.Resources) < pageSize {
-		pageWarning = "WARNING: some results on this page were excluded because you do not have access to them; consider continuing with the next page token, increasing the page size, or narrowing your filters"
+	omitted := fitMeetingOccurrences(out.Resources, occurrenceWindowFor(args), meetingSearchNow())
+	if omitted > 0 {
+		out.Warnings = append(out.Warnings, occurrenceNote)
 	}
 
 	prettyJSON, err := json.MarshalIndent(out, "", "  ")
 	if err != nil {
 		logger.ErrorContext(ctx, "failed to marshal search result", "error", err)
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: fmt.Sprintf("Error: failed to format result: %v", err)},
-			},
-			IsError: true,
-		}, nil, nil
+		return nil, resourceSearchResult{}, toolError(fmt.Sprintf("Error: failed to format result: %v", err))
 	}
 
-	logger.InfoContext(ctx, "search_meetings succeeded", "count", len(result.Resources))
+	logger.InfoContext(ctx, "search_meetings succeeded", "count", len(result.Resources), "occurrences_omitted", omitted)
 
-	content := []mcp.Content{}
-	if pageWarning != "" {
-		content = append(content, &mcp.TextContent{Text: pageWarning})
-	}
-	content = append(content, &mcp.TextContent{Text: string(prettyJSON)})
-	return &mcp.CallToolResult{Content: content}, nil, nil
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{
+			&mcp.TextContent{Text: string(prettyJSON)},
+		},
+	}, out, nil
 }
 
 // handleGetMeeting implements the get_meeting tool logic.
@@ -489,9 +516,13 @@ func handleGetMeeting(ctx context.Context, req *mcp.CallToolRequest, args GetMee
 		}, nil, nil
 	}
 
-	mcpToken, err := lfxv2.ExtractMCPToken(req.Extra.TokenInfo)
+	var tokenInfo *auth.TokenInfo
+	if req.Extra != nil {
+		tokenInfo = req.Extra.TokenInfo
+	}
+	ctx, err := meetingConfig.Clients.TokenFromRequest(ctx, tokenInfo)
 	if err != nil {
-		logger.ErrorContext(ctx, "failed to extract MCP token", "error", err)
+		logger.ErrorContext(ctx, "failed to resolve LFX authentication", "error", err)
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{
 				&mcp.TextContent{Text: fmt.Sprintf("Error: failed to extract MCP token: %v", err)},
@@ -500,7 +531,6 @@ func handleGetMeeting(ctx context.Context, req *mcp.CallToolRequest, args GetMee
 		}, nil, nil
 	}
 
-	ctx = meetingConfig.Clients.WithMCPToken(ctx, mcpToken)
 	clients := meetingConfig.Clients
 
 	logger.InfoContext(ctx, "fetching meeting", "uid", args.UID)
@@ -509,7 +539,7 @@ func handleGetMeeting(ctx context.Context, req *mcp.CallToolRequest, args GetMee
 	payload := &querysvc.QueryResourcesPayload{
 		Version:  "1",
 		Type:     &resourceType,
-		Filters:  []string{fmt.Sprintf("uid:%s", args.UID)},
+		TagsAll:  []string{meetingIDTagPrefix + args.UID},
 		PageSize: 1,
 		Sort:     "name_asc",
 	}
@@ -528,10 +558,15 @@ func handleGetMeeting(ctx context.Context, req *mcp.CallToolRequest, args GetMee
 	if len(result.Resources) == 0 {
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{
-				&mcp.TextContent{Text: fmt.Sprintf("Error: meeting not found with UID: %s", args.UID)},
+				&mcp.TextContent{Text: lookupNotVisibleMessage("meeting", args.UID)},
 			},
 			IsError: true,
 		}, nil, nil
+	}
+
+	result.Resources[0].Data = trimMeetingResultFields(result.Resources[0].Data)
+	if !HasFullView(ctx) {
+		trimMeetingPeopleFields(result.Resources[0].Data)
 	}
 
 	prettyJSON, err := json.MarshalIndent(result.Resources[0], "", "  ")
@@ -555,31 +590,24 @@ func handleGetMeeting(ctx context.Context, req *mcp.CallToolRequest, args GetMee
 }
 
 // handleSearchMeetingRegistrants implements the search_meeting_registrants tool logic.
-func handleSearchMeetingRegistrants(ctx context.Context, req *mcp.CallToolRequest, args SearchMeetingRegistrantsArgs) (*mcp.CallToolResult, any, error) {
+func handleSearchMeetingRegistrants(ctx context.Context, req *mcp.CallToolRequest, args SearchMeetingRegistrantsArgs) (*mcp.CallToolResult, resourceSearchResult, error) {
 	logger := newToolLogger(ctx, req)
 
 	if meetingConfig == nil {
 		logger.ErrorContext(ctx, "meeting tools not configured")
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: "Error: meeting tools not configured"},
-			},
-			IsError: true,
-		}, nil, nil
+		return nil, resourceSearchResult{}, toolError("Error: meeting tools not configured")
 	}
 
-	mcpToken, err := lfxv2.ExtractMCPToken(req.Extra.TokenInfo)
+	var tokenInfo *auth.TokenInfo
+	if req.Extra != nil {
+		tokenInfo = req.Extra.TokenInfo
+	}
+	ctx, err := meetingConfig.Clients.TokenFromRequest(ctx, tokenInfo)
 	if err != nil {
-		logger.ErrorContext(ctx, "failed to extract MCP token", "error", err)
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: fmt.Sprintf("Error: failed to extract MCP token: %v", err)},
-			},
-			IsError: true,
-		}, nil, nil
+		logger.ErrorContext(ctx, "failed to resolve LFX authentication", "error", err)
+		return nil, resourceSearchResult{}, toolError(fmt.Sprintf("Error: failed to extract MCP token: %v", err))
 	}
 
-	ctx = meetingConfig.Clients.WithMCPToken(ctx, mcpToken)
 	clients := meetingConfig.Clients
 
 	pageSize := args.PageSize
@@ -620,51 +648,57 @@ func handleSearchMeetingRegistrants(ctx context.Context, req *mcp.CallToolReques
 
 	logger.InfoContext(ctx, "searching meeting registrants", "meeting_id", args.MeetingID, "committee_uid", args.CommitteeUID, "name", args.Name, "page_size", pageSize)
 
-	result, err := clients.QuerySvc.QueryResources(ctx, payload)
-	if err != nil {
-		logger.ErrorContext(ctx, "QueryResources failed", "error", err)
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: friendlyAPIError("failed to search meeting registrants", err)},
-			},
-			IsError: true,
-		}, nil, nil
+	// Without full view, the result follows what LFX Self Serve shows the
+	// caller of one meeting (people_visibility_meetings.go): meeting_id is
+	// required, since Self Serve has no cross-meeting registrant list for
+	// anyone but a meeting's organizers; the view is decided before the
+	// query, so a meeting that shows the caller nothing is not read at all
+	// and no page token can span its registrants; name, which can probe for
+	// a person, is accepted only when the caller organizes the meeting.
+	fullView := HasFullView(ctx)
+	var views map[string]registrantView
+	if !fullView {
+		if args.MeetingID == "" {
+			return nil, resourceSearchResult{}, toolError(registrantScopeRefusal)
+		}
+		views, err = registrantViews(ctx, clients, tokenInfo, []string{args.MeetingID})
+		if err != nil {
+			logger.ErrorContext(ctx, "registrant visibility check failed", "error", err)
+			return nil, resourceSearchResult{}, toolError(peopleVisibilityUnavailableMessage)
+		}
+		if args.Name != "" && views[args.MeetingID] != registrantOrganizer {
+			return nil, resourceSearchResult{}, toolError(registrantFilterRefusal)
+		}
 	}
 
-	type searchResult struct {
-		Resources []*querysvc.Resource `json:"resources"`
-		PageToken *string              `json:"page_token,omitempty"`
+	result := &querysvc.QueryResourcesResult{}
+	if fullView || views[args.MeetingID] != registrantHidden {
+		result, err = clients.QuerySvc.QueryResources(ctx, payload)
+		if err != nil {
+			logger.ErrorContext(ctx, "QueryResources failed", "error", err)
+			return nil, resourceSearchResult{}, toolError(friendlyAPIError("failed to search meeting registrants", err))
+		}
 	}
 
-	out := searchResult{
-		Resources: result.Resources,
-		PageToken: result.PageToken,
+	if !fullView {
+		result.Resources = filterRegistrants(result.Resources, views, tokenInfo)
 	}
 
-	var pageWarning string
-	if result.PageToken != nil && len(result.Resources) < pageSize {
-		pageWarning = "WARNING: some results on this page were excluded because you do not have access to them; consider continuing with the next page token, increasing the page size, or narrowing your filters"
-	}
+	out := newResourceSearchResult("meeting registrants", result, pageSize, args.PageToken != "")
 
 	prettyJSON, err := json.MarshalIndent(out, "", "  ")
 	if err != nil {
 		logger.ErrorContext(ctx, "failed to marshal search result", "error", err)
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: fmt.Sprintf("Error: failed to format result: %v", err)},
-			},
-			IsError: true,
-		}, nil, nil
+		return nil, resourceSearchResult{}, toolError(fmt.Sprintf("Error: failed to format result: %v", err))
 	}
 
 	logger.InfoContext(ctx, "search_meeting_registrants succeeded", "count", len(result.Resources))
 
-	content := []mcp.Content{}
-	if pageWarning != "" {
-		content = append(content, &mcp.TextContent{Text: pageWarning})
-	}
-	content = append(content, &mcp.TextContent{Text: string(prettyJSON)})
-	return &mcp.CallToolResult{Content: content}, nil, nil
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{
+			&mcp.TextContent{Text: string(prettyJSON)},
+		},
+	}, out, nil
 }
 
 // handleGetMeetingRegistrant implements the get_meeting_registrant tool logic.
@@ -690,9 +724,13 @@ func handleGetMeetingRegistrant(ctx context.Context, req *mcp.CallToolRequest, a
 		}, nil, nil
 	}
 
-	mcpToken, err := lfxv2.ExtractMCPToken(req.Extra.TokenInfo)
+	var tokenInfo *auth.TokenInfo
+	if req.Extra != nil {
+		tokenInfo = req.Extra.TokenInfo
+	}
+	ctx, err := meetingConfig.Clients.TokenFromRequest(ctx, tokenInfo)
 	if err != nil {
-		logger.ErrorContext(ctx, "failed to extract MCP token", "error", err)
+		logger.ErrorContext(ctx, "failed to resolve LFX authentication", "error", err)
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{
 				&mcp.TextContent{Text: fmt.Sprintf("Error: failed to extract MCP token: %v", err)},
@@ -701,7 +739,6 @@ func handleGetMeetingRegistrant(ctx context.Context, req *mcp.CallToolRequest, a
 		}, nil, nil
 	}
 
-	ctx = meetingConfig.Clients.WithMCPToken(ctx, mcpToken)
 	clients := meetingConfig.Clients
 
 	logger.InfoContext(ctx, "fetching meeting registrant", "uid", args.UID)
@@ -729,10 +766,26 @@ func handleGetMeetingRegistrant(ctx context.Context, req *mcp.CallToolRequest, a
 	if len(result.Resources) == 0 {
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{
-				&mcp.TextContent{Text: fmt.Sprintf("Error: meeting registrant not found with UID: %s", args.UID)},
+				&mcp.TextContent{Text: lookupNotVisibleMessage("meeting registrant", args.UID)},
 			},
 			IsError: true,
 		}, nil, nil
+	}
+
+	// Without full view, the record follows what LFX Self Serve shows the
+	// caller of its meeting; a record it does not show reads like one that
+	// is not visible at all.
+	if !HasFullView(ctx) {
+		views, err := registrantViews(ctx, clients, tokenInfo, dataStrings(result.Resources[:1], "meeting_id"))
+		if err != nil {
+			logger.ErrorContext(ctx, "registrant visibility check failed", "error", err)
+			return errorResult(peopleVisibilityUnavailableMessage), nil, nil
+		}
+		shown := filterRegistrants(result.Resources[:1], views, tokenInfo)
+		if len(shown) == 0 {
+			return errorResult(lookupNotVisibleMessage("meeting registrant", args.UID)), nil, nil
+		}
+		result.Resources[0] = shown[0]
 	}
 
 	prettyJSON, err := json.MarshalIndent(result.Resources[0], "", "  ")
@@ -757,35 +810,28 @@ func handleGetMeetingRegistrant(ctx context.Context, req *mcp.CallToolRequest, a
 
 // handleGetPastMeetingParticipant implements the get_past_meeting_participant tool logic.
 func handleGetPastMeetingParticipant(ctx context.Context, req *mcp.CallToolRequest, args GetPastMeetingParticipantArgs) (*mcp.CallToolResult, any, error) {
-	return handleGetPastMeetingResource(ctx, req, pastMeetingParticipantResourceType, "past meeting participant", args.UID)
+	return handleGetPastMeetingResource(ctx, req, pastMeetingParticipantResourceType, "past meeting participant", args.UID, resourceLookup{})
 }
 
 // handleSearchPastMeetingSummaries implements the search_past_meeting_summaries tool logic.
-func handleSearchPastMeetingSummaries(ctx context.Context, req *mcp.CallToolRequest, args SearchPastMeetingSummariesArgs) (*mcp.CallToolResult, any, error) {
+func handleSearchPastMeetingSummaries(ctx context.Context, req *mcp.CallToolRequest, args SearchPastMeetingSummariesArgs) (*mcp.CallToolResult, resourceSearchResult, error) {
 	logger := newToolLogger(ctx, req)
 
 	if meetingConfig == nil {
 		logger.ErrorContext(ctx, "meeting tools not configured")
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: "Error: meeting tools not configured"},
-			},
-			IsError: true,
-		}, nil, nil
+		return nil, resourceSearchResult{}, toolError("Error: meeting tools not configured")
 	}
 
-	mcpToken, err := lfxv2.ExtractMCPToken(req.Extra.TokenInfo)
+	var tokenInfo *auth.TokenInfo
+	if req.Extra != nil {
+		tokenInfo = req.Extra.TokenInfo
+	}
+	ctx, err := meetingConfig.Clients.TokenFromRequest(ctx, tokenInfo)
 	if err != nil {
-		logger.ErrorContext(ctx, "failed to extract MCP token", "error", err)
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: fmt.Sprintf("Error: failed to extract MCP token: %v", err)},
-			},
-			IsError: true,
-		}, nil, nil
+		logger.ErrorContext(ctx, "failed to resolve LFX authentication", "error", err)
+		return nil, resourceSearchResult{}, toolError(fmt.Sprintf("Error: failed to extract MCP token: %v", err))
 	}
 
-	ctx = meetingConfig.Clients.WithMCPToken(ctx, mcpToken)
 	clients := meetingConfig.Clients
 
 	pageSize := args.PageSize
@@ -833,57 +879,37 @@ func handleSearchPastMeetingSummaries(ctx context.Context, req *mcp.CallToolRequ
 	result, err := clients.QuerySvc.QueryResources(ctx, payload)
 	if err != nil {
 		logger.ErrorContext(ctx, "QueryResources failed", "error", err)
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: friendlyAPIError("failed to search past meeting summaries", err)},
-			},
-			IsError: true,
-		}, nil, nil
+		return nil, resourceSearchResult{}, toolError(friendlyAPIError("failed to search past meeting summaries", err))
 	}
 
-	type searchResult struct {
-		Resources []*querysvc.Resource `json:"resources"`
-		PageToken *string              `json:"page_token,omitempty"`
+	if !HasFullView(ctx) {
+		trimResourcesData(result.Resources, trimSummaryPeopleFields)
 	}
 
-	out := searchResult{
-		Resources: result.Resources,
-		PageToken: result.PageToken,
-	}
-
-	var pageWarning string
-	if result.PageToken != nil && len(result.Resources) < pageSize {
-		pageWarning = "WARNING: some results on this page were excluded because you do not have access to them; consider continuing with the next page token, increasing the page size, or narrowing your filters"
-	}
+	out := newResourceSearchResult("past-meeting summaries", result, pageSize, args.PageToken != "")
 
 	prettyJSON, err := json.MarshalIndent(out, "", "  ")
 	if err != nil {
 		logger.ErrorContext(ctx, "failed to marshal search result", "error", err)
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: fmt.Sprintf("Error: failed to format result: %v", err)},
-			},
-			IsError: true,
-		}, nil, nil
+		return nil, resourceSearchResult{}, toolError(fmt.Sprintf("Error: failed to format result: %v", err))
 	}
 
 	logger.InfoContext(ctx, "search past meeting summaries succeeded", "past_meeting_id", args.PastMeetingID, "project_uid", args.ProjectUID, "count", len(result.Resources))
 
-	content := []mcp.Content{}
-	if pageWarning != "" {
-		content = append(content, &mcp.TextContent{Text: pageWarning})
-	}
-	content = append(content, &mcp.TextContent{Text: string(prettyJSON)})
-	return &mcp.CallToolResult{Content: content}, nil, nil
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{
+			&mcp.TextContent{Text: string(prettyJSON)},
+		},
+	}, out, nil
 }
 
 // handleGetPastMeetingSummary implements the get_past_meeting_summary tool logic.
 func handleGetPastMeetingSummary(ctx context.Context, req *mcp.CallToolRequest, args GetPastMeetingSummaryArgs) (*mcp.CallToolResult, any, error) {
-	return handleGetPastMeetingResource(ctx, req, pastMeetingSummaryResourceType, "past meeting summary", args.UID)
+	return handleGetPastMeetingResource(ctx, req, pastMeetingSummaryResourceType, "past meeting summary", args.UID, resourceLookup{tagPrefix: pastMeetingSummaryIDTagPrefix})
 }
 
 // handleGetPastMeetingResource is a shared implementation for getting a past meeting resource by UID.
-func handleGetPastMeetingResource(ctx context.Context, req *mcp.CallToolRequest, resourceType, resourceLabel, uid string) (*mcp.CallToolResult, any, error) {
+func handleGetPastMeetingResource(ctx context.Context, req *mcp.CallToolRequest, resourceType, resourceLabel, uid string, lookup resourceLookup) (*mcp.CallToolResult, any, error) {
 	logger := newToolLogger(ctx, req)
 
 	if meetingConfig == nil {
@@ -905,9 +931,13 @@ func handleGetPastMeetingResource(ctx context.Context, req *mcp.CallToolRequest,
 		}, nil, nil
 	}
 
-	mcpToken, err := lfxv2.ExtractMCPToken(req.Extra.TokenInfo)
+	var tokenInfo *auth.TokenInfo
+	if req.Extra != nil {
+		tokenInfo = req.Extra.TokenInfo
+	}
+	ctx, err := meetingConfig.Clients.TokenFromRequest(ctx, tokenInfo)
 	if err != nil {
-		logger.ErrorContext(ctx, "failed to extract MCP token", "error", err)
+		logger.ErrorContext(ctx, "failed to resolve LFX authentication", "error", err)
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{
 				&mcp.TextContent{Text: fmt.Sprintf("Error: failed to extract MCP token: %v", err)},
@@ -916,18 +946,11 @@ func handleGetPastMeetingResource(ctx context.Context, req *mcp.CallToolRequest,
 		}, nil, nil
 	}
 
-	ctx = meetingConfig.Clients.WithMCPToken(ctx, mcpToken)
 	clients := meetingConfig.Clients
 
 	logger.InfoContext(ctx, "fetching "+resourceLabel, "uid", uid)
 
-	payload := &querysvc.QueryResourcesPayload{
-		Version:  "1",
-		Type:     &resourceType,
-		Filters:  []string{fmt.Sprintf("uid:%s", uid)},
-		PageSize: 1,
-		Sort:     "name_asc",
-	}
+	payload := lookup.payload(resourceType, uid)
 
 	result, err := clients.QuerySvc.QueryResources(ctx, payload)
 	if err != nil {
@@ -943,10 +966,32 @@ func handleGetPastMeetingResource(ctx context.Context, req *mcp.CallToolRequest,
 	if len(result.Resources) == 0 {
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{
-				&mcp.TextContent{Text: fmt.Sprintf("Error: %s not found with UID: %s", resourceLabel, uid)},
+				&mcp.TextContent{Text: lookupNotVisibleMessage(resourceLabel, uid)},
 			},
 			IsError: true,
 		}, nil, nil
+	}
+
+	// Without full view, the record follows what LFX Self Serve shows the
+	// caller (people_visibility_meetings.go): a participant record it does
+	// not show reads like one that is not visible at all; a summary keeps
+	// its content and loses the host and editor fields.
+	if !HasFullView(ctx) {
+		switch resourceType {
+		case pastMeetingParticipantResourceType:
+			views, err := participantViews(ctx, clients, dataStrings(result.Resources[:1], "meeting_and_occurrence_id"), nil)
+			if err != nil {
+				logger.ErrorContext(ctx, "participant visibility check failed", "error", err)
+				return errorResult(peopleVisibilityUnavailableMessage), nil, nil
+			}
+			shown := filterParticipants(result.Resources[:1], views, tokenInfo)
+			if len(shown) == 0 {
+				return errorResult(lookupNotVisibleMessage(resourceLabel, uid)), nil, nil
+			}
+			result.Resources[0] = shown[0]
+		case pastMeetingSummaryResourceType:
+			trimSummaryPeopleFields(result.Resources[0].Data)
+		}
 	}
 
 	prettyJSON, err := json.MarshalIndent(result.Resources[0], "", "  ")
@@ -1003,7 +1048,7 @@ type SearchPastMeetingsGroupArgs struct {
 }
 
 // handleSearchMeetingsGroupMode adapts group-mode args to the meetings handler.
-func handleSearchMeetingsGroupMode(ctx context.Context, req *mcp.CallToolRequest, args SearchMeetingsGroupArgs) (*mcp.CallToolResult, any, error) {
+func handleSearchMeetingsGroupMode(ctx context.Context, req *mcp.CallToolRequest, args SearchMeetingsGroupArgs) (*mcp.CallToolResult, resourceSearchResult, error) {
 	return handleSearchMeetings(ctx, req, SearchMeetingsArgs{
 		Name:         args.Name,
 		ProjectUID:   args.ProjectUID,
@@ -1018,7 +1063,7 @@ func handleSearchMeetingsGroupMode(ctx context.Context, req *mcp.CallToolRequest
 }
 
 // handleSearchMeetingRegistrantsGroupMode adapts group-mode args to the meeting registrants handler.
-func handleSearchMeetingRegistrantsGroupMode(ctx context.Context, req *mcp.CallToolRequest, args SearchMeetingRegistrantsGroupArgs) (*mcp.CallToolResult, any, error) {
+func handleSearchMeetingRegistrantsGroupMode(ctx context.Context, req *mcp.CallToolRequest, args SearchMeetingRegistrantsGroupArgs) (*mcp.CallToolResult, resourceSearchResult, error) {
 	return handleSearchMeetingRegistrants(ctx, req, SearchMeetingRegistrantsArgs{
 		MeetingID:    args.MeetingID,
 		CommitteeUID: args.GroupUID,
@@ -1050,7 +1095,7 @@ func handleSearchPastMeetingParticipantsGroupMode(ctx context.Context, req *mcp.
 }
 
 // handleSearchPastMeetingsGroupMode adapts group-mode args to the past meetings handler.
-func handleSearchPastMeetingsGroupMode(ctx context.Context, req *mcp.CallToolRequest, args SearchPastMeetingsGroupArgs) (*mcp.CallToolResult, any, error) {
+func handleSearchPastMeetingsGroupMode(ctx context.Context, req *mcp.CallToolRequest, args SearchPastMeetingsGroupArgs) (*mcp.CallToolResult, resourceSearchResult, error) {
 	return handleSearchPastMeetings(ctx, req, SearchPastMeetingsArgs{
 		Name:         args.Name,
 		ProjectUID:   args.ProjectUID,
@@ -1066,31 +1111,24 @@ func handleSearchPastMeetingsGroupMode(ctx context.Context, req *mcp.CallToolReq
 }
 
 // handleSearchPastMeetings implements the search_past_meetings tool logic.
-func handleSearchPastMeetings(ctx context.Context, req *mcp.CallToolRequest, args SearchPastMeetingsArgs) (*mcp.CallToolResult, any, error) {
+func handleSearchPastMeetings(ctx context.Context, req *mcp.CallToolRequest, args SearchPastMeetingsArgs) (*mcp.CallToolResult, resourceSearchResult, error) {
 	logger := newToolLogger(ctx, req)
 
 	if meetingConfig == nil {
 		logger.ErrorContext(ctx, "meeting tools not configured")
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: "Error: meeting tools not configured"},
-			},
-			IsError: true,
-		}, nil, nil
+		return nil, resourceSearchResult{}, toolError("Error: meeting tools not configured")
 	}
 
-	mcpToken, err := lfxv2.ExtractMCPToken(req.Extra.TokenInfo)
+	var tokenInfo *auth.TokenInfo
+	if req.Extra != nil {
+		tokenInfo = req.Extra.TokenInfo
+	}
+	ctx, err := meetingConfig.Clients.TokenFromRequest(ctx, tokenInfo)
 	if err != nil {
-		logger.ErrorContext(ctx, "failed to extract MCP token", "error", err)
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: fmt.Sprintf("Error: failed to extract MCP token: %v", err)},
-			},
-			IsError: true,
-		}, nil, nil
+		logger.ErrorContext(ctx, "failed to resolve LFX authentication", "error", err)
+		return nil, resourceSearchResult{}, toolError(fmt.Sprintf("Error: failed to extract MCP token: %v", err))
 	}
 
-	ctx = meetingConfig.Clients.WithMCPToken(ctx, mcpToken)
 	clients := meetingConfig.Clients
 
 	pageSize := args.PageSize
@@ -1161,54 +1199,40 @@ func handleSearchPastMeetings(ctx context.Context, req *mcp.CallToolRequest, arg
 	result, err := clients.QuerySvc.QueryResources(ctx, payload)
 	if err != nil {
 		logger.ErrorContext(ctx, "QueryResources failed", "error", err)
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: friendlyAPIError("failed to search past meetings", err)},
-			},
-			IsError: true,
-		}, nil, nil
+		return nil, resourceSearchResult{}, toolError(friendlyAPIError("failed to search past meetings", err))
 	}
 
-	type searchResult struct {
-		Resources []*querysvc.Resource `json:"resources"`
-		PageToken *string              `json:"page_token,omitempty"`
+	for _, res := range result.Resources {
+		if res != nil {
+			res.Data = trimMeetingResultFields(res.Data)
+		}
+	}
+	if !HasFullView(ctx) {
+		trimResourcesData(result.Resources, trimPastMeetingPeopleFields)
 	}
 
-	out := searchResult{
-		Resources: result.Resources,
-		PageToken: result.PageToken,
-	}
-
-	var pageWarning string
-	if result.PageToken != nil && len(result.Resources) < pageSize {
-		pageWarning = "WARNING: some results on this page were excluded because you do not have access to them; consider continuing with the next page token, increasing the page size, or narrowing your filters"
-	}
+	out := newResourceSearchResult("past meetings", result, pageSize, args.PageToken != "")
 
 	prettyJSON, err := json.MarshalIndent(out, "", "  ")
 	if err != nil {
 		logger.ErrorContext(ctx, "failed to marshal search result", "error", err)
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: fmt.Sprintf("Error: failed to format result: %v", err)},
-			},
-			IsError: true,
-		}, nil, nil
+		return nil, resourceSearchResult{}, toolError(fmt.Sprintf("Error: failed to format result: %v", err))
 	}
 
 	logger.InfoContext(ctx, "search_past_meetings succeeded", "count", len(result.Resources))
 
-	content := []mcp.Content{}
-	if pageWarning != "" {
-		content = append(content, &mcp.TextContent{Text: pageWarning})
-	}
-	content = append(content, &mcp.TextContent{Text: string(prettyJSON)})
-	return &mcp.CallToolResult{Content: content}, nil, nil
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{
+			&mcp.TextContent{Text: string(prettyJSON)},
+		},
+	}, out, nil
 }
 
 // pastMeetingGetResult is the output type for the get_past_meeting tool. It nests
 // the base past meeting alongside its recording and transcript, mirroring the
 // shape of get_project's { base, settings }. The recording and transcript are
-// omitted when absent or inaccessible.
+// omitted when absent or inaccessible; the text result then carries a note or
+// a warning saying so.
 type pastMeetingGetResult struct {
 	Meeting    *meetingservice.ITXPastZoomMeeting `json:"meeting"`
 	Recording  *querysvc.Resource                 `json:"recording,omitempty"`
@@ -1247,39 +1271,41 @@ func fetchPastMeetingChildResource(ctx context.Context, clients *lfxv2.Clients, 
 	return result.Resources[0], nil
 }
 
+// pastMeetingChildNotVisibleNote is the get_past_meeting note for a recording
+// or transcript the query service did not return. It says only that none is
+// visible to the caller, never that one exists.
+func pastMeetingChildNotVisibleNote(what string) string {
+	return "NOTE: " + notVisibleText(what+" of this past meeting") + "."
+}
+
 // handleGetPastMeeting implements the get_past_meeting tool logic. It fetches the
 // base past meeting via the meeting-service GetItxPastMeeting Goa endpoint, then
 // nests the recording and transcript sub-objects (fetched from the query service,
 // parent-ref scoped). Missing or inaccessible recording/transcript data yields a
-// partial result plus a warning rather than a hard failure, matching get_project.
+// partial result plus a note or warning rather than a hard failure, matching
+// get_project.
 func handleGetPastMeeting(ctx context.Context, req *mcp.CallToolRequest, args GetPastMeetingArgs) (*mcp.CallToolResult, pastMeetingGetResult, error) {
 	logger := newToolLogger(ctx, req)
 
 	if meetingConfig == nil {
 		logger.ErrorContext(ctx, "meeting tools not configured")
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: "Error: meeting tools not configured"}},
-			IsError: true,
-		}, pastMeetingGetResult{}, nil
+		return nil, pastMeetingGetResult{}, toolError("Error: meeting tools not configured")
 	}
 
 	if args.UID == "" {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: "Error: uid is required"}},
-			IsError: true,
-		}, pastMeetingGetResult{}, nil
+		return nil, pastMeetingGetResult{}, toolError("Error: uid is required")
 	}
 
-	mcpToken, err := lfxv2.ExtractMCPToken(req.Extra.TokenInfo)
+	var tokenInfo *auth.TokenInfo
+	if req.Extra != nil {
+		tokenInfo = req.Extra.TokenInfo
+	}
+	ctx, err := meetingConfig.Clients.TokenFromRequest(ctx, tokenInfo)
 	if err != nil {
-		logger.ErrorContext(ctx, "failed to extract MCP token", "error", err)
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Error: failed to extract MCP token: %v", err)}},
-			IsError: true,
-		}, pastMeetingGetResult{}, nil
+		logger.ErrorContext(ctx, "failed to resolve LFX authentication", "error", err)
+		return nil, pastMeetingGetResult{}, toolError(fmt.Sprintf("Error: failed to extract MCP token: %v", err))
 	}
 
-	ctx = meetingConfig.Clients.WithMCPToken(ctx, mcpToken)
 	clients := meetingConfig.Clients
 
 	logger.InfoContext(ctx, "fetching past meeting", "uid", args.UID)
@@ -1294,10 +1320,7 @@ func handleGetPastMeeting(ctx context.Context, req *mcp.CallToolRequest, args Ge
 	})
 	if err != nil {
 		logger.ErrorContext(ctx, "GetItxPastMeeting failed", "error", err, "uid", args.UID)
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: friendlyAPIError("failed to get past meeting", err)}},
-			IsError: true,
-		}, pastMeetingGetResult{}, nil
+		return nil, pastMeetingGetResult{}, toolError(friendlyAPIError("failed to get past meeting", err))
 	}
 
 	out := pastMeetingGetResult{Meeting: meeting}
@@ -1307,37 +1330,46 @@ func handleGetPastMeeting(ctx context.Context, req *mcp.CallToolRequest, args Ge
 	// the past_meeting parent ref. The input uid is the meeting_and_occurrence_id.
 	parentRef := "past_meeting:" + args.UID
 
-	// Recording (soft failure): omit silently when absent; warn when inaccessible.
+	// Recording (soft failure): warn when the fetch fails; note when the query
+	// returns none, since the query service leaves out records the caller
+	// cannot view and an absent recording may exist but not be shared.
 	recording, err := fetchPastMeetingChildResource(ctx, clients, pastMeetingRecordingResourceType, parentRef)
-	if err != nil {
-		warnings = append(warnings, fmt.Sprintf("WARNING: past meeting recording unavailable - %s", err.Error()))
+	switch {
+	case err != nil:
+		warnings = append(warnings, "WARNING: past meeting recording unavailable - "+apiErrorDetail(err))
 		logger.ErrorContext(ctx, "getting past meeting recording failed, returning without it", "error", err, "uid", args.UID)
-	} else {
+	case recording == nil:
+		warnings = append(warnings, pastMeetingChildNotVisibleNote("recording"))
+	default:
 		out.Recording = recording
 	}
 
 	// Transcript (soft failure): same handling as recording.
-	//
-	// GATE (LFXV2-2827): v1_past_meeting_transcript has a history of unreliable
-	// indexing (ARCH-393). This block is intentionally self-contained so it can be
-	// removed in one edit if pre-merge re-validation shows transcript indexing is
-	// still unreliable — in which case ship recording-only and track transcript as
-	// a follow-up.
 	transcript, err := fetchPastMeetingChildResource(ctx, clients, pastMeetingTranscriptResourceType, parentRef)
-	if err != nil {
-		warnings = append(warnings, fmt.Sprintf("WARNING: past meeting transcript unavailable - %s", err.Error()))
+	switch {
+	case err != nil:
+		warnings = append(warnings, "WARNING: past meeting transcript unavailable - "+apiErrorDetail(err))
 		logger.ErrorContext(ctx, "getting past meeting transcript failed, returning without it", "error", err, "uid", args.UID)
-	} else {
+	case transcript == nil:
+		warnings = append(warnings, pastMeetingChildNotVisibleNote("transcript"))
+	default:
 		out.Transcript = transcript
+	}
+
+	// No screen renders the host or editors of a recording or transcript.
+	if !HasFullView(ctx) {
+		if out.Recording != nil {
+			trimPastMeetingArtifactPeopleFields(out.Recording.Data)
+		}
+		if out.Transcript != nil {
+			trimPastMeetingArtifactPeopleFields(out.Transcript.Data)
+		}
 	}
 
 	prettyJSON, err := json.MarshalIndent(out, "", "  ")
 	if err != nil {
 		logger.ErrorContext(ctx, "failed to marshal past meeting result", "error", err)
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Error: failed to format result: %v", err)}},
-			IsError: true,
-		}, pastMeetingGetResult{}, nil
+		return nil, pastMeetingGetResult{}, toolError(fmt.Sprintf("Error: failed to format result: %v", err))
 	}
 
 	logger.InfoContext(ctx, "get past meeting succeeded", "uid", args.UID)

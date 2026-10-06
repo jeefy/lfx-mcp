@@ -239,6 +239,9 @@ func TestExploreSemanticLayerDescription(t *testing.T) {
 	for _, want := range []string{
 		// The covered domains, named so routing works from this tool.
 		"contributor, contribution, membership, revenue, event, registration, speaker, sponsorship, enrollment, certification, maintainer, health",
+		"engagement score", "survey (NPS)", "web session", "paid ads",
+		// Scheduled, not actual, duration: the data cannot measure time spent.
+		"meeting (occurrences, scheduled minutes, attendance)",
 		"country, region, parent organization or project tree",
 		// Guidance-first, once per session, shared with the query tool.
 		"read_lfx_semantic_layer_guidance",
@@ -303,6 +306,8 @@ func TestQuerySemanticLayerDescription(t *testing.T) {
 		"query_lfx_lens",
 		// The answer contract.
 		"State definition and window",
+		// The covered domains, named so routing works from this tool.
+		"engagement, surveys, web sessions, paid ads, social listening",
 		"country/region",
 	} {
 		if !strings.Contains(querySemanticLayerDescription, want) {
@@ -639,6 +644,18 @@ func listRegisteredTool(t *testing.T, name string, register func(*mcp.Server)) *
 // findRegisteredTool returns the named tool, or nil when it is not registered.
 func findRegisteredTool(t *testing.T, name string, register func(*mcp.Server)) *mcp.Tool {
 	t.Helper()
+	for _, tool := range registeredTools(t, register) {
+		if tool.Name == name {
+			return tool
+		}
+	}
+	return nil
+}
+
+// registeredTools lists, through an in-memory client, every tool register
+// adds to a fresh server.
+func registeredTools(t *testing.T, register func(*mcp.Server)) []*mcp.Tool {
+	t.Helper()
 
 	server := mcp.NewServer(&mcp.Implementation{
 		Name:    "test-server",
@@ -665,12 +682,7 @@ func findRegisteredTool(t *testing.T, name string, register func(*mcp.Server)) *
 	if err != nil {
 		t.Fatalf("ListTools failed: %v", err)
 	}
-	for _, tool := range res.Tools {
-		if tool.Name == name {
-			return tool
-		}
-	}
-	return nil
+	return res.Tools
 }
 
 func schemaRequired(t *testing.T, tool *mcp.Tool) []string {
