@@ -279,7 +279,7 @@ type SearchMeetingsArgs struct {
 	DateFrom     string `json:"date_from,omitempty" jsonschema:"Start date inclusive in ISO 8601 format (e.g. 2025-01-01)"`
 	DateTo       string `json:"date_to,omitempty" jsonschema:"End date inclusive in ISO 8601 format (e.g. 2025-12-31)"`
 	Sort         string `json:"sort,omitempty" jsonschema:"Sort order: name_asc (default), name_desc, updated_asc, updated_desc"`
-	OnlyMine     bool   `json:"only_mine,omitempty" jsonschema:"When true, return only the meetings you are registered for (as host or participant) under your LFX login, as LFX Self Serve's My Meetings lists them. Needs a personal login. An empty result means none is registered to your login, not that none exist"`
+	OnlyMine     bool   `json:"only_mine,omitempty" jsonschema:"When true, return only the meetings you are registered for (as host or participant) under your LFX login, as LFX Self Serve's My Meetings lists them. Needs a personal login. An empty page means none of them matches the other filters or this page, not that none exist; follow page_token when present"`
 	PageSize     int    `json:"page_size,omitempty" jsonschema:"Number of results per page (default 10, max 100)"`
 	PageToken    string `json:"page_token,omitempty" jsonschema:"Opaque pagination token from a previous search response"`
 }
@@ -293,7 +293,7 @@ type SearchMeetingsGroupArgs struct {
 	DateFrom   string `json:"date_from,omitempty" jsonschema:"Start date inclusive in ISO 8601 format (e.g. 2025-01-01)"`
 	DateTo     string `json:"date_to,omitempty" jsonschema:"End date inclusive in ISO 8601 format (e.g. 2025-12-31)"`
 	Sort       string `json:"sort,omitempty" jsonschema:"Sort order for results (default name_asc),enum=name_asc,enum=name_desc,enum=updated_asc,enum=updated_desc"`
-	OnlyMine   bool   `json:"only_mine,omitempty" jsonschema:"When true, return only the meetings you are registered for (as host or participant) under your LFX login, as LFX Self Serve's My Meetings lists them. Needs a personal login. An empty result means none is registered to your login, not that none exist"`
+	OnlyMine   bool   `json:"only_mine,omitempty" jsonschema:"When true, return only the meetings you are registered for (as host or participant) under your LFX login, as LFX Self Serve's My Meetings lists them. Needs a personal login. An empty page means none of them matches the other filters or this page, not that none exist; follow page_token when present"`
 	PageSize   int    `json:"page_size,omitempty" jsonschema:"Number of results per page (default 10, max 100)"`
 	PageToken  string `json:"page_token,omitempty" jsonschema:"Opaque pagination token from a previous search response"`
 }
@@ -1032,7 +1032,7 @@ type SearchPastMeetingsArgs struct {
 	DateFrom     string `json:"date_from,omitempty" jsonschema:"Start date inclusive in ISO 8601 format (e.g. 2025-01-01)"`
 	DateTo       string `json:"date_to,omitempty" jsonschema:"End date inclusive in ISO 8601 format (e.g. 2025-12-31)"`
 	Sort         string `json:"sort,omitempty" jsonschema:"Sort order: name_asc (default), name_desc, updated_asc, updated_desc"`
-	OnlyMine     bool   `json:"only_mine,omitempty" jsonschema:"When true, return only the past meetings you were invited to or attended (as host, invitee or attendee) under your LFX login, as LFX Self Serve's My Meetings lists them. Needs a personal login. An empty result means none is recorded for your login, not that none exist"`
+	OnlyMine     bool   `json:"only_mine,omitempty" jsonschema:"When true, return only the past meetings you were invited to or attended (as host, invitee or attendee) under your LFX login, as LFX Self Serve's My Meetings lists them. Needs a personal login. An empty page means none of them matches the other filters or this page, not that none exist; follow page_token when present"`
 	PageSize     int    `json:"page_size,omitempty" jsonschema:"Number of results per page (default 10, max 100)"`
 	PageToken    string `json:"page_token,omitempty" jsonschema:"Opaque pagination token from a previous search response"`
 }
@@ -1052,7 +1052,7 @@ type SearchPastMeetingsGroupArgs struct {
 	DateFrom   string `json:"date_from,omitempty" jsonschema:"Start date inclusive in ISO 8601 format (e.g. 2025-01-01)"`
 	DateTo     string `json:"date_to,omitempty" jsonschema:"End date inclusive in ISO 8601 format (e.g. 2025-12-31)"`
 	Sort       string `json:"sort,omitempty" jsonschema:"Sort order: name_asc (default), name_desc, updated_asc, updated_desc"`
-	OnlyMine   bool   `json:"only_mine,omitempty" jsonschema:"When true, return only the past meetings you were invited to or attended (as host, invitee or attendee) under your LFX login, as LFX Self Serve's My Meetings lists them. Needs a personal login. An empty result means none is recorded for your login, not that none exist"`
+	OnlyMine   bool   `json:"only_mine,omitempty" jsonschema:"When true, return only the past meetings you were invited to or attended (as host, invitee or attendee) under your LFX login, as LFX Self Serve's My Meetings lists them. Needs a personal login. An empty page means none of them matches the other filters or this page, not that none exist; follow page_token when present"`
 	PageSize   int    `json:"page_size,omitempty" jsonschema:"Number of results per page (default 10, max 100)"`
 	PageToken  string `json:"page_token,omitempty" jsonschema:"Opaque pagination token from a previous search response"`
 }
