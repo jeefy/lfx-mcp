@@ -358,8 +358,8 @@ that.
   rule with `attachmentCountFilterFields` and `attachmentCountDateFields`.
   `search_meeting_attachments` (`meeting_attachment.go`) removes the
   attachment's creator, editor and uploader without full view, and `file_url`
-  (the upload's storage key) for every caller; `attachmentFieldProjection`
-  is the one list that decides which other fields a record keeps.
+  (the upload's storage key) for every caller; `attachmentDroppedFields` is
+  the one place that rule lives, and every other field of the record stays.
 
 Adding a people tool: decide the view per parent object with one of the
 `*Views` predicates (or add one next to them) before the query, narrow the

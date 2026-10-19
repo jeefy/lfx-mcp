@@ -75,51 +75,20 @@ func RegisterSearchMeetingAttachments(server *mcp.Server) {
 	}, handleSearchMeetingAttachments)
 }
 
-// attachmentFieldProjection is the one list that decides which fields of an
-// attachment record every caller gets back, applied before the people trim.
-// Today it drops file_url alone: that value is the storage key of the upload,
-// not an address a caller can fetch (downloads are presigned on request by
-// the meeting service), and the rest of the record is returned as the
-// summary, recording and transcript tools return theirs. To return instead
-// only what the LFX Self Serve screens render, replace the line with
-//
-//	var attachmentFieldProjection = fieldProjection{keep: true, fields: []string{"uid", "meeting_id", "meeting_and_occurrence_id", "project_uid", "project_slug", "name", "type", "link", "file_name", "created_at", "modified_at"}}
-//
-// and update the fixture expectations in meeting_attachment_test.go.
-var attachmentFieldProjection = fieldProjection{keep: false, fields: []string{"file_url"}}
+// attachmentDroppedFields is the one place that decides which fields of an
+// attachment record no caller gets back: file_url, the storage key of the
+// upload, which is not an address a caller can fetch (downloads are
+// presigned on request by the meeting service). Every other field of the
+// record is returned, as the summary, recording and transcript tools return
+// theirs, before the people trim below runs for a caller without full view.
+var attachmentDroppedFields = []string{"file_url"}
 
-// fieldProjection selects the top-level fields of a record map: with keep
-// set, only the listed fields stay; otherwise every field but the listed
-// ones stays.
-type fieldProjection struct {
-	keep   bool
-	fields []string
-}
-
-// apply projects data in place. Non-map data is left alone.
-func (p fieldProjection) apply(data any) {
-	m, ok := data.(map[string]any)
-	if !ok {
-		return
+// dropAttachmentFields removes attachmentDroppedFields from one record.
+// Non-map data is left alone.
+func dropAttachmentFields(data any) {
+	if m, ok := data.(map[string]any); ok {
+		dropFields(m, attachmentDroppedFields...)
 	}
-	if !p.keep {
-		dropFields(m, p.fields...)
-		return
-	}
-	listed := make(map[string]struct{}, len(p.fields))
-	for _, f := range p.fields {
-		listed[f] = struct{}{}
-	}
-	for key := range m {
-		if _, ok := listed[key]; !ok {
-			delete(m, key)
-		}
-	}
-}
-
-// projectAttachmentFields applies attachmentFieldProjection to one record.
-func projectAttachmentFields(data any) {
-	attachmentFieldProjection.apply(data)
 }
 
 // trimAttachmentPeopleFields reduces an attachment record in place for a
@@ -253,7 +222,7 @@ func handleSearchMeetingAttachments(ctx context.Context, req *mcp.CallToolReques
 		return nil, resourceSearchResult{}, toolError(friendlyAPIError("failed to search meeting attachments", err))
 	}
 
-	trimResourcesData(result.Resources, projectAttachmentFields)
+	trimResourcesData(result.Resources, dropAttachmentFields)
 	if !HasFullView(ctx) {
 		trimResourcesData(result.Resources, trimAttachmentPeopleFields)
 	}
