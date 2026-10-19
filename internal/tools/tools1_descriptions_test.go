@@ -29,6 +29,7 @@ func TestTools1Descriptions_FunctionVisibilityAndBudget(t *testing.T) {
 		{"search_groups", func(s *mcp.Server) { RegisterSearchCommittees(s, true) }},
 		{"search_past_meeting_participants", func(s *mcp.Server) { RegisterSearchPastMeetingParticipants(s, false) }},
 		{"search_past_meeting_participants", func(s *mcp.Server) { RegisterSearchPastMeetingParticipants(s, true) }},
+		{"search_meeting_attachments", RegisterSearchMeetingAttachments},
 		{"get_org_committee_seats", RegisterGetOrgCommitteeSeats},
 		{"audit_committee_coverage", RegisterAuditCommitteeCoverage},
 		{"search_projects", RegisterSearchProjects},

@@ -547,6 +547,7 @@ var PeopleToolNames = []string{
 	"search_past_meeting_participants", "get_past_meeting_participant",
 	"search_past_meetings", "get_past_meeting",
 	"search_past_meeting_summaries", "get_past_meeting_summary",
+	"search_meeting_attachments",
 	"search_mailing_list_members", "get_mailing_list_member",
 }
 

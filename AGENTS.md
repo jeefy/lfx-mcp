@@ -242,7 +242,7 @@ Adding a new write tool means registering it under `canRead` in `newServer()` (l
 
 Tools that return people records (group members, meeting registrants, past
 meeting participants, and the people fields of meeting, past meeting,
-recording, transcript and summary records) return, to a caller without
+recording, transcript, summary and attachment records) return, to a caller without
 **full view**, only what LFX Self Serve renders on screen to that same
 person. The rules live in `internal/tools/people_visibility.go` (groups),
 `people_visibility_meetings.go` (meetings) and
