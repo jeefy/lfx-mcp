@@ -217,8 +217,9 @@ func TestCountLFXResources_MissingTokenFails(t *testing.T) {
 
 func TestCountLFXResources_DescriptionBudgetAndContent(t *testing.T) {
 	tool := listRegisteredTool(t, "count_lfx_resources", RegisterCountLFXResources)
-	// Keep a tight local pin while allowing the explicit participant parent type.
-	const descriptionBudget = 1005
+	// Keep a tight local pin while allowing the explicit participant and
+	// attachment parent types.
+	const descriptionBudget = 1091
 	if n := len(tool.Description); n > descriptionBudget {
 		t.Errorf("description is %d bytes, budget is %d", n, descriptionBudget)
 	}
@@ -240,11 +241,11 @@ func TestCountLFXResources_DescriptionBudgetAndContent(t *testing.T) {
 func TestCountLFXResources_IndexScopeDescriptionAndSchema(t *testing.T) {
 	tool := listRegisteredTool(t, "count_lfx_resources", RegisterCountLFXResources)
 	t.Logf("count_lfx_resources description: %d UTF-8 bytes", len(tool.Description))
-	const want = "Returns {count, complete, visibility, note}. complete=true means every record indexed in LFX v2 that the caller may see was counted; complete=false means the count stopped early and is a lower bound (narrow the query). Records not yet onboarded into LFX v2 are never counted. Use this instead of paging a search to count meetings, participants, committees and members. For how many projects a foundation or parent has, use the semantic layer's project metrics (the authoritative project directory), not this tool."
+	const want = "Returns {count, complete, visibility, note}. complete=true means every record indexed in LFX v2 that the caller may see was counted; complete=false means the count stopped early and is a lower bound (narrow the query). Records not yet onboarded into LFX v2 are never counted. Use this instead of paging a search to count meetings, participants, attachments, committees and members. For how many projects a foundation or parent has, use the semantic layer's project metrics (the authoritative project directory), not this tool."
 	if !strings.Contains(tool.Description, want) {
 		t.Error("count description must distinguish index completeness from directory coverage and route project counts to the semantic layer")
 	}
-	const wantType = "(required) Resource type to count: committee, committee_member, v1_meeting, v1_meeting_registrant, v1_past_meeting, v1_past_meeting_participant, project, project_membership, b2b_org, groupsio_mailing_list, groupsio_member (the v2 index holds only onboarded projects)"
+	const wantType = "(required) Resource type to count: committee, committee_member, v1_meeting, v1_meeting_registrant, v1_past_meeting, v1_past_meeting_participant, v1_meeting_attachment, v1_past_meeting_attachment, project, project_membership, b2b_org, groupsio_mailing_list, groupsio_member (the v2 index holds only onboarded projects)"
 	if got := countTypeTag(t); got != wantType {
 		t.Errorf("type schema must retain the type list and project index coverage caveat: got %q", got)
 	}

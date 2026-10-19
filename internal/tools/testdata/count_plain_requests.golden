@@ -16,6 +16,12 @@ type+tags v1_past_meeting GET /query/resources/count?tags=project_uid%3AP1&tags=
 type v1_past_meeting_participant GET /query/resources/count?type=v1_past_meeting_participant&v=1
 type+parent v1_past_meeting_participant GET /query/resources/count?parent=project%3AP1&type=v1_past_meeting_participant&v=1
 type+tags v1_past_meeting_participant GET /query/resources/count?tags=project_uid%3AP1&tags=project_slug%3Aexample&type=v1_past_meeting_participant&v=1
+type v1_meeting_attachment GET /query/resources/count?type=v1_meeting_attachment&v=1
+type+parent v1_meeting_attachment GET /query/resources/count?parent=project%3AP1&type=v1_meeting_attachment&v=1
+type+tags v1_meeting_attachment GET /query/resources/count?tags=project_uid%3AP1&tags=project_slug%3Aexample&type=v1_meeting_attachment&v=1
+type v1_past_meeting_attachment GET /query/resources/count?type=v1_past_meeting_attachment&v=1
+type+parent v1_past_meeting_attachment GET /query/resources/count?parent=project%3AP1&type=v1_past_meeting_attachment&v=1
+type+tags v1_past_meeting_attachment GET /query/resources/count?tags=project_uid%3AP1&tags=project_slug%3Aexample&type=v1_past_meeting_attachment&v=1
 type project GET /query/resources/count?type=project&v=1
 type+parent project GET /query/resources/count?parent=project%3AP1&type=project&v=1
 type+tags project GET /query/resources/count?tags=project_uid%3AP1&tags=project_slug%3Aexample&type=project&v=1

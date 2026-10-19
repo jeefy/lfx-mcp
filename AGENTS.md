@@ -353,7 +353,13 @@ that.
   `v1_meeting` and `v1_past_meeting` it accepts
   `filters_or` / `filters_all` only on an allowlist of the record's own
   fields (`meetingCountFilterFields`) and `date_field` only from
-  `meetingCountDateFields`, so no field naming a person has to be enumerated.
+  `meetingCountDateFields`, so no field naming a person has to be enumerated;
+  `v1_meeting_attachment` and `v1_past_meeting_attachment` follow the same
+  rule with `attachmentCountFilterFields` and `attachmentCountDateFields`.
+  `search_meeting_attachments` (`meeting_attachment.go`) removes the
+  attachment's creator, editor and uploader without full view, and `file_url`
+  (the upload's storage key) for every caller; `attachmentFieldProjection`
+  is the one list that decides which other fields a record keeps.
 
 Adding a people tool: decide the view per parent object with one of the
 `*Views` predicates (or add one next to them) before the query, narrow the
