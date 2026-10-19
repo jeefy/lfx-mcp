@@ -67,7 +67,7 @@ type SearchMeetingAttachmentsArgs struct {
 func RegisterSearchMeetingAttachments(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "search_meeting_attachments",
-		Description: "Search files and links attached to LFX meetings via the query service. meeting_kind is required: upcoming (set meeting_id) or past (set past_meeting_id, the meeting_and_occurrence_id value); or set project_uid for every attachment of a project. Optional type (file or link) and name. Returns only attachments of meetings you can view, as LFX Self Serve shows them; download links are not included.",
+		Description: "Search files and links attached to LFX meetings via the query service. meeting_kind is required: upcoming (set meeting_id) or past (set past_meeting_id, the meeting_and_occurrence_id value); or set project_uid to list the attachments of every meeting of that kind in the project. Optional type (file or link) and name. Returns only attachments of meetings you can view, as LFX Self Serve shows them; download links are not included.",
 		Annotations: &mcp.ToolAnnotations{
 			Title:        "Search Meeting Attachments",
 			ReadOnlyHint: true,

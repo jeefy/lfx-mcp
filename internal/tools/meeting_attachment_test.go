@@ -450,12 +450,12 @@ func TestSearchMeetingAttachments_Description(t *testing.T) {
 	if tool.Annotations == nil || !tool.Annotations.ReadOnlyHint || tool.Annotations.Title != "Search Meeting Attachments" {
 		t.Errorf("annotations must be read-only with the title, got %+v", tool.Annotations)
 	}
-	for _, want := range []string{"meeting_kind is required", "upcoming (set meeting_id)", "past (set past_meeting_id", "project_uid", "type (file or link)", "meetings you can view, as LFX Self Serve shows them", "download links are not included"} {
+	for _, want := range []string{"meeting_kind is required", "upcoming (set meeting_id)", "past (set past_meeting_id", "set project_uid to list the attachments of every meeting of that kind in the project", "type (file or link)", "meetings you can view, as LFX Self Serve shows them", "download links are not included"} {
 		if !strings.Contains(tool.Description, want) {
 			t.Errorf("description missing %q", want)
 		}
 	}
-	for _, banned := range []string{"Insights", "%", "staff", "committee", "group"} {
+	for _, banned := range []string{"Insights", "%", "staff", "committee", "group", "document", "Documents"} {
 		if strings.Contains(tool.Description, banned) {
 			t.Errorf("description must not contain %q", banned)
 		}
